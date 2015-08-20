@@ -1,0 +1,5 @@
+float32 speed #[mm/s]
+float32 current #[A]
+---
+bool success
+string message
