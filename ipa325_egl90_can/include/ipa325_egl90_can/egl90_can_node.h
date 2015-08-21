@@ -21,15 +21,8 @@ struct stat{
     float position;
     float speed;
     float current;
-    unsigned isReferenced : 1;
-    unsigned isMoving : 1;
-    unsigned isInProgMode : 1;
-    unsigned isWarning : 1;
-    unsigned isError : 1;
-    unsigned isBraked : 1;
-    unsigned isMotionInterrupted : 1;
-    unsigned isTargetReached : 1;
-    unsigned int errorCode;
+    char statusBits;
+    char errorCode;
 }__attribute__((packed));
 
 union statusData{

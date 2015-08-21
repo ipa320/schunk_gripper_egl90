@@ -10,10 +10,10 @@
 #include <net/if.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
-//#include <linux/can/raw.h>
 #include <iostream>
 #include <iomanip>
 #include <string>
+
 
 bool Egl90_can_node::_shutdownSignal = false;
 
@@ -181,27 +181,17 @@ bool Egl90_can_node::getState(std_srvs::Trigger::Request &req, std_srvs::Trigger
     status.c[13] = rxframe3.data[4];
 
     ROS_INFO("Position: %f,\nVelocity: %f,\nCurrent: %f", status.status.position, status.status.speed, status.status.current);
-/*
-    bool isReferenced;
-    bool isMoving;
-    bool isInProgMode;
-    bool isWarning;
-    bool isError;
-    bool isBraked;
-    bool isMotionInterrupted;
-    bool isTargetReached;
-    int errorCode;
-*/
-    ROS_WARN("Status bits not correct!");
+
+    ROS_WARN("Status bits may not correct!");
     ROS_INFO("IsReferenced: %s,\nIsMoving: %s,\nIsInProgMode: %s\nIsWarning: %s\nIsError: %s\nIsBraked: %s\nisMotionInterrupted: %s\nIsTargetReached: %s\nErrorCode: %X",
-             status.status.isReferenced ? "True" : "False",
-             status.status.isMoving ? "True" : "False",
-             status.status.isInProgMode ? "True" : "False",
-             status.status.isWarning ? "True" : "False",
-             status.status.isError ? "True" : "False",
-             status.status.isBraked ? "True" : "False",
-             status.status.isMotionInterrupted ? "True" : "False",
-             status.status.isTargetReached ? "True" : "False",
+             (status.status.statusBits >> 0) & 1 ? "True" : "False",
+             (status.status.statusBits >> 1) & 1 ? "True" : "False",
+             (status.status.statusBits >> 2) & 1 ? "True" : "False",
+             (status.status.statusBits >> 3) & 1 ? "True" : "False",
+             (status.status.statusBits >> 4) & 1 ? "True" : "False",
+             (status.status.statusBits >> 5) & 1 ? "True" : "False",
+             (status.status.statusBits >> 6) & 1 ? "True" : "False",
+             (status.status.statusBits >> 7) & 1 ? "True" : "False",
              status.status.errorCode);
 
     res.success = true;
@@ -254,13 +244,13 @@ bool Egl90_can_node::movePos(ipa325_egl90_can::MovePos::Request &req, ipa325_egl
         if (timeout)
         {
             res.success = false;
-            res.message = "Module reached position!";
+            res.message = "Module did not reply properly!";
             return true;
         }
         else
         {
             res.success = true;
-            res.message = "Module did reply properly!";
+            res.message = "Module reached position!";
         }
     }
 
@@ -314,13 +304,13 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
          if (timeout)
          {
              res.success = false;
-             res.message = "Module reached position!";
+             res.message = "Module did not reply properly!";
              return true;
          }
          else
          {
              res.success = true;
-             res.message = "Module did reply properly!";
+             res.message = "Module reached position!";
          }
      }
 
