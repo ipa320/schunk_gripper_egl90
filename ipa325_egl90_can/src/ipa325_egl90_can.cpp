@@ -259,10 +259,79 @@ bool Egl90_can_node::movePos(ipa325_egl90_can::MovePos::Request &req, ipa325_egl
 
 bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_egl90_can::MoveGrip::Response &res)
 {
-     ROS_ERROR("move_grip seems not to be available in module 12");
-     return false;
-// --------------------------------------------------//
-     fdata cur;
+     ROS_INFO("move_grip seems not to be available in module 12, this is the alternativ implementation using velocity cmd and underlying current control!");
+
+     ROS_WARN("The parameter you give in this command will be the default parameters for future move_pos commands!");
+
+     fdata vel, cur;
+     bool error_flag = false;
+
+     vel.f = req.speed;
+     cur.f = req.current;
+     struct can_frame tx1frame, tx2frame, rxframe;
+
+     tx1frame.can_id = _can_id;
+     tx2frame.can_id = _can_id;
+     tx1frame.can_dlc = 8;
+
+     tx1frame.data[0] = 9; // DLEN Total Data length to come (1Byte CMD + 4Byte Vel + 4Byte Cur)
+     tx1frame.data[1] = 0x84; // First fragment (Fragmentsmarker do not count in DLEN)
+     tx1frame.data[2] = 0xB5; // Move_vel
+
+     tx1frame.data[3] = vel.c[0];
+     tx1frame.data[4] = vel.c[1];
+     tx1frame.data[5] = vel.c[2];
+     tx1frame.data[6] = vel.c[3];
+
+     tx1frame.data[7] = cur.c[0];
+
+     tx2frame.data[0] = 3;
+     tx2frame.data[1] = 0x86; //Last fragment
+     tx2frame.data[2] = cur.c[1];
+     tx2frame.data[3] = cur.c[2];
+     tx2frame.data[4] = cur.c[3];
+     tx2frame.can_dlc = 5;
+
+     write(_can_socket, &tx1frame, sizeof(struct can_frame));
+     write(_can_socket, &tx2frame, sizeof(struct can_frame));
+
+     do
+     {
+         ros::Duration(0.01).sleep();
+         read(_can_socket, &rxframe, sizeof(struct can_frame));
+     } while (!isCanAnswer(0xB5, rxframe, error_flag) || _shutdownSignal);
+
+     if (error_flag)
+     {
+         res.success = false;
+         res.message = "Module did reply with error 0x02!";
+     }
+     else
+     {
+         do // wait for motion blocked signal
+         {
+             ros::Duration(0.01).sleep();
+             read(_can_socket, &rxframe, sizeof(struct can_frame));
+         } while ((rxframe.can_dlc < 2 && rxframe.data[2] != 0x93) || _shutdownSignal); // 0x93 is CMD_MOVE_BLOCKED
+
+         // TODO: timeout while reading socket
+         bool timeout = false;
+         if (timeout)
+         {
+             res.success = false;
+             res.message = "Module did not reply properly!";
+             return true;
+         }
+         else
+         {
+             res.success = true;
+             res.message = "Module reached position!";
+         }
+     }
+
+     return true;
+     // --------------move grip --------------------------//
+/*     fdata cur;
      cur.f = req.current;
      bool error_flag = false;
 
@@ -315,6 +384,7 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
      }
 
      return true;
+*/
 }
 
 bool Egl90_can_node::isCanAnswer(unsigned int cmd, const can_frame& rxframe, bool& error_flag)
