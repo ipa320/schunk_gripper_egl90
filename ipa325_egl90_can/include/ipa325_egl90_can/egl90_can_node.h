@@ -46,6 +46,7 @@ private:
     ros::ServiceServer _srv_ack;
     ros::ServiceServer _srv_movePos;
     ros::ServiceServer _srv_moveGrip;
+    ros::ServiceServer _srv_stop;
     ros::ServiceServer _srv_getState;
 
 
@@ -64,6 +65,9 @@ private:
                             std_srvs::Trigger::Response &res);
 
     bool acknowledge(std_srvs::Trigger::Request  &req,
+                            std_srvs::Trigger::Response &res);
+
+    bool stop(std_srvs::Trigger::Request  &req,
                             std_srvs::Trigger::Response &res);
 
     bool getState(std_srvs::Trigger::Request  &req,

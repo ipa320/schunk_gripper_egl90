@@ -30,6 +30,7 @@ Egl90_can_node::Egl90_can_node()
     _srv_movePos = _nh.advertiseService(nodename+"/move_pos", &Egl90_can_node::movePos, this);
     _srv_moveGrip = _nh.advertiseService(nodename+"/move_grip", &Egl90_can_node::moveGrip, this);
     _srv_getState = _nh.advertiseService(nodename+"/get_state", &Egl90_can_node::getState, this);
+    _srv_stop = _nh.advertiseService(nodename+"/stop", &Egl90_can_node::stop, this);
 
     struct sockaddr_can address;
     struct ifreq interreq;
@@ -130,6 +131,37 @@ bool Egl90_can_node::acknowledge(std_srvs::Trigger::Request &req, std_srvs::Trig
         ros::Duration(0.01).sleep();
         read(_can_socket, &rxframe, sizeof(struct can_frame));
     } while (!isCanAnswer(0x8B, rxframe, error_flag) || _shutdownSignal);
+
+    if (error_flag)
+    {
+        res.success = false;
+        res.message = "Module did reply with error 0x02!";
+    }
+    else
+    {
+        res.success = true;
+        res.message = "Module did reply properly!";
+    }
+
+    return true;
+}
+
+bool Egl90_can_node::stop(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res)
+{
+    struct can_frame txframe, rxframe;
+    bool error_flag = false;
+
+    txframe.can_id = _can_id;
+    txframe.can_dlc = 0x02;
+    txframe.data[0] = 0x01;
+    txframe.data[1] = 0x91;
+
+    write(_can_socket, &txframe, sizeof(struct can_frame));
+    do
+    {
+        ros::Duration(0.01).sleep();
+        read(_can_socket, &rxframe, sizeof(struct can_frame));
+    } while (!isCanAnswer(0x91, rxframe, error_flag) || _shutdownSignal);
 
     if (error_flag)
     {
