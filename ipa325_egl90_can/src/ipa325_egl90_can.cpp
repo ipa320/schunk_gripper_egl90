@@ -65,8 +65,18 @@ Egl90_can_node::Egl90_can_node()
     else
     {
         ROS_INFO("Can socket binding was successful!");
-    }
+        std_srvs::Trigger::Request req;
+        std_srvs::Trigger::Response res;
+        acknowledge(req, res);
+        updateState();
 
+        _timer = _nh.createTimer(ros::Duration(1.0/30.0), &Egl90_can_node::timer_cb, this);
+    }
+}
+
+void Egl90_can_node::timer_cb(const ros::TimerEvent&)
+{
+    publishState();
 }
 
 bool Egl90_can_node::moveToReferencePos(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res)
@@ -115,7 +125,7 @@ bool Egl90_can_node::moveToReferencePos(std_srvs::Trigger::Request &req, std_srv
         }
     }
 
-    publishState();
+    updateState();
     return true;
 }
 
@@ -147,7 +157,7 @@ bool Egl90_can_node::acknowledge(std_srvs::Trigger::Request &req, std_srvs::Trig
         res.message = "Module did reply properly!";
     }
 
-    publishState();
+    updateState();
     return true;
 }
 
@@ -179,11 +189,11 @@ bool Egl90_can_node::stop(std_srvs::Trigger::Request &req, std_srvs::Trigger::Re
         res.message = "Module did reply properly!";
     }
 
-    publishState();
+    updateState();
     return true;
 }
 
-statusData Egl90_can_node::getState()
+statusData Egl90_can_node::updateState()
 {
     struct can_frame txframe, rxframe1, rxframe2, rxframe3;
 
@@ -231,28 +241,27 @@ statusData Egl90_can_node::getState()
              (status.status.statusBits >> 6) & 1 ? "True" : "False",
              (status.status.statusBits >> 7) & 1 ? "True" : "False",
              status.status.errorCode);
+    _status = status;
     return status;
 }
 
 bool Egl90_can_node::getState(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res)
 {
-    publishState();
     res.success = true;
     res.message = "ok";
 
+    updateState();
     return true;
 }
 
 bool Egl90_can_node::publishState()
 {
-    statusData status;
-    status = getState();
     sensor_msgs::JointState js;
     js.header.stamp = ros::Time::now();
     js.name.push_back("egl_position");
-    js.position.push_back(status.status.position);
-    js.velocity.push_back(status.status.speed);
-    js.effort.push_back(status.status.current);
+    js.position.push_back(_status.status.position);
+    js.velocity.push_back(_status.status.speed);
+    js.effort.push_back(_status.status.current);
     _pub_joint_states.publish(js);
 }
 
@@ -310,7 +319,7 @@ bool Egl90_can_node::movePos(ipa325_egl90_can::MovePos::Request &req, ipa325_egl
         }
     }
 
-    publishState();
+    updateState();
     return true;
 }
 
@@ -386,7 +395,7 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
          }
      }
 
-     publishState();
+     updateState();
      return true;
      // --------------move grip --------------------------//
 /*     fdata cur;

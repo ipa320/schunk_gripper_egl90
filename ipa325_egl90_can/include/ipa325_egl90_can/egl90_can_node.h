@@ -36,7 +36,7 @@ public:
     Egl90_can_node();
     void spin();
 
-    statusData getState();
+    statusData updateState();
 private:
 
     static bool _shutdownSignal;
@@ -57,6 +57,8 @@ private:
     unsigned int _can_module_id;
     std::string _can_socket_id;
 
+    ros::Timer _timer;
+    statusData _status;
     /**
      * Callback for receiving signal. When SIGINT was received shutdown everything.
      * @param signal
@@ -84,6 +86,7 @@ private:
     bool isCanAnswer(unsigned int cmd, const can_frame &rxframe, bool &error_flag);
 
     bool publishState();
+    void timer_cb(const ros::TimerEvent &);
 };
 
 #endif
