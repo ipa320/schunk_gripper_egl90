@@ -36,12 +36,14 @@ public:
     Egl90_can_node();
     void spin();
 
+    statusData getState();
 private:
 
     static bool _shutdownSignal;
     ros::NodeHandle _nh;
 
-    ros::Publisher _pub_diagnostics;
+    //ros::Publisher _pub_diagnostics;
+    ros::Publisher _pub_joint_states;
     ros::ServiceServer _srv_reference;
     ros::ServiceServer _srv_ack;
     ros::ServiceServer _srv_movePos;
@@ -81,6 +83,7 @@ private:
 
     bool isCanAnswer(unsigned int cmd, const can_frame &rxframe, bool &error_flag);
 
+    bool publishState();
 };
 
 #endif
