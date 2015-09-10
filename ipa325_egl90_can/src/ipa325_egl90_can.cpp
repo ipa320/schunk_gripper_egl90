@@ -241,6 +241,9 @@ statusData Egl90_can_node::updateState()
              (status.status.statusBits >> 6) & 1 ? "True" : "False",
              (status.status.statusBits >> 7) & 1 ? "True" : "False",
              status.status.errorCode);
+
+    status.status.position *= 0.001;
+    status.status.speed *= 0.001;
     _status = status;
     return status;
 }
