@@ -36,12 +36,14 @@ public:
     Egl90_can_node();
     void spin();
 
+    statusData updateState();
 private:
 
     static bool _shutdownSignal;
     ros::NodeHandle _nh;
 
-    ros::Publisher _pub_diagnostics;
+    //ros::Publisher _pub_diagnostics;
+    ros::Publisher _pub_joint_states;
     ros::ServiceServer _srv_reference;
     ros::ServiceServer _srv_ack;
     ros::ServiceServer _srv_movePos;
@@ -55,6 +57,8 @@ private:
     unsigned int _can_module_id;
     std::string _can_socket_id;
 
+    ros::Timer _timer;
+    statusData _status;
     /**
      * Callback for receiving signal. When SIGINT was received shutdown everything.
      * @param signal
@@ -81,6 +85,8 @@ private:
 
     bool isCanAnswer(unsigned int cmd, const can_frame &rxframe, bool &error_flag);
 
+    bool publishState();
+    void timer_cb(const ros::TimerEvent &);
 };
 
 #endif
