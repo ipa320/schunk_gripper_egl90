@@ -54,9 +54,11 @@ private:
 
     can::ThreadedSocketCANInterface _can_driver;
     can::CommInterface::FrameListener::Ptr _respListener;
+    can::CommInterface::FrameListener::Ptr _errorListener;
 
     unsigned int _can_id;
     unsigned int _can_module_id;
+    unsigned int _can_error_id;
     std::string _can_socket_id;
 
     ros::Timer _timer;
@@ -92,6 +94,8 @@ private:
     void timer_cb(const ros::TimerEvent &);
 
     void handleFrame_response(const can::Frame &f);
+    void handleFrame_error(const can::Frame &f);
+
 };
 
 #endif

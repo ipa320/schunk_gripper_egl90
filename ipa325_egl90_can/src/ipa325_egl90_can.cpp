@@ -26,8 +26,10 @@ Egl90_can_node::Egl90_can_node()
 
 
     // TODO: Make this parameters
+    // TODO replace all 50C#xxxx with the following parameter
     _can_id = 0x050C; // 0x05 for master, module id 0xC = 12
     _can_module_id = 0x070C; // 0x07 for slave, module id 0xC = 12
+    _can_error_id = 0x30C; // 0x03 for warning/error, module id 0xC = 12
     _can_socket_id = "can0"; // name within linux ifconfig
 
 
@@ -38,10 +40,11 @@ Egl90_can_node::Egl90_can_node()
     }
     // read own messages: false
     _respListener = _can_driver.createMsgListener(can::MsgHeader(_can_module_id), can::CommInterface::FrameDelegate(this, &Egl90_can_node::handleFrame_response));
+    _errorListener = _can_driver.createMsgListener(can::MsgHeader(_can_error_id), can::CommInterface::FrameDelegate(this, &Egl90_can_node::handleFrame_error));
 
      ROS_INFO("Can socket binding was successful!");
      acknowledge();
-     updateState();
+     //updateState();
 
     _timer = _nh.createTimer(ros::Duration(1.0/50.0), &Egl90_can_node::timer_cb, this);
 
@@ -49,8 +52,16 @@ Egl90_can_node::Egl90_can_node()
 
 void Egl90_can_node::handleFrame_response(const can::Frame &f)
 {
-
+    ROS_INFO("Received msg");
+    // TODO!!!
 }
+
+void Egl90_can_node::handleFrame_error(const can::Frame &f)
+{
+    ROS_ERROR("Received error msg");
+    // TODO!!!
+}
+
 
 void Egl90_can_node::timer_cb(const ros::TimerEvent&)
 {
@@ -59,64 +70,48 @@ void Egl90_can_node::timer_cb(const ros::TimerEvent&)
 
 bool Egl90_can_node::moveToReferencePos(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res)
 {
-//    struct can_frame txframe, rxframe;
-//    bool error_flag = false;
+    ROS_INFO("Sending reference message");
+    can::Frame txframe = can::Frame(can::MsgHeader(_can_id));
+    txframe.data[0] = 0x01;
+    txframe.data[1] = 0x92; //CMD Byte
+    txframe.dlc = 2;
 
-//    txframe.can_id = _can_id;
-//    txframe.can_dlc = 0x02;
-//    txframe.data[0] = 0x01;
-//    txframe.data[1] = 0x92; //CMD Byte
+//    _can_driver.send(can::toframe("50C#0192"));
+    _can_driver.send(txframe);
 
-    _can_driver.send(can::toframe("7#0192"));
     return true;
 }
 
 void Egl90_can_node::acknowledge()
 {
-    _can_driver.send(can::toframe("7#018B"));
+    ROS_INFO("Sending acknowledge message");
+    can::Frame txframe = can::Frame(can::MsgHeader(_can_id));
+    txframe.data[0] = 0x01;
+    txframe.data[1] = 0x8B; //CMD Byte
+    txframe.dlc = 2;
+
+    //_can_driver.send(can::toframe("50C#018B"));
+    _can_driver.send(txframe);
+
 }
 
 bool Egl90_can_node::acknowledge(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res)
 {
-    struct can_frame txframe, rxframe;
-    bool error_flag = false;
-
-    txframe.can_id = _can_id;
-    txframe.can_dlc = 0x02;
-    txframe.data[0] = 0x01;
-    txframe.data[1] = 0x8B; //CMD Byte
-
-//    write(_can_socket, &txframe, sizeof(struct can_frame));
-//    do
-//    {
-//        ros::Duration(0.01).sleep();
-//        read(_can_socket, &rxframe, sizeof(struct can_frame));
-//    } while (!isCanAnswer(0x8B, rxframe, error_flag) || _shutdownSignal);
-
-//    if (error_flag)
-//    {
-//        res.success = false;
-//        res.message = "Module did reply with error 0x02!";
-//    }
-//    else
-//    {
-//        res.success = true;
-//        res.message = "Module did reply properly!";
-//    }
-
-//    updateState();
+    acknowledge();
     return true;
 }
 
 bool Egl90_can_node::stop(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res)
 {
-    struct can_frame txframe, rxframe;
-    bool error_flag = false;
 
-    txframe.can_id = _can_id;
-    txframe.can_dlc = 0x02;
+    ROS_INFO("Sending stop message");
+    can::Frame txframe = can::Frame(can::MsgHeader(_can_id));
     txframe.data[0] = 0x01;
-    txframe.data[1] = 0x91;
+    txframe.data[1] = 0x91; //CMD Byte
+    txframe.dlc = 2;
+
+//    _can_driver.send(can::toframe("50C#0191"));
+    _can_driver.send(txframe);
 
 //    write(_can_socket, &txframe, sizeof(struct can_frame));
 //    do
@@ -142,12 +137,21 @@ bool Egl90_can_node::stop(std_srvs::Trigger::Request &req, std_srvs::Trigger::Re
 
 statusData Egl90_can_node::updateState()
 {
-    struct can_frame txframe, rxframe1, rxframe2, rxframe3;
-
-    txframe.can_id = _can_id;
-    txframe.can_dlc = 0x02;
+    ROS_INFO("Sending getState message");
+    can::Frame txframe = can::Frame(can::MsgHeader(_can_id));
     txframe.data[0] = 0x01;
-    txframe.data[1] = 0x95;//CMD Byte
+    txframe.data[1] = 0x95; //CMD Byte
+    txframe.dlc = 2;
+
+//    _can_driver.send(can::toframe("50C#0195"));
+    _can_driver.send(txframe);
+
+//    struct can_frame txframe, rxframe1, rxframe2, rxframe3;
+
+//    txframe.can_id = _can_id;
+//    txframe.can_dlc = 0x02;
+//    txframe.data[0] = 0x01;
+//    txframe.data[1] = 0x95;//CMD Byte
 
 //    write(_can_socket, &txframe, sizeof(struct can_frame));
 
@@ -157,7 +161,7 @@ statusData Egl90_can_node::updateState()
 //    read(_can_socket, &rxframe2, sizeof(struct can_frame));
 //    read(_can_socket, &rxframe3, sizeof(struct can_frame));
 
-    statusData status;
+//    statusData status;
 //    status.c[0] = rxframe1.data[3];
 //    status.c[1] = rxframe1.data[4];
 //    status.c[2] = rxframe1.data[5];
@@ -190,10 +194,10 @@ statusData Egl90_can_node::updateState()
 //             status.status.errorCode);
 
     // Convert to meter
-    status.status.position *= 0.001;
-    status.status.speed *= 0.001;
-    _status = status;
-    return status;
+//    status.status.position *= 0.001;
+//    status.status.speed *= 0.001;
+//    _status = status;
+    return _status;
 }
 
 bool Egl90_can_node::getState(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res)
@@ -220,20 +224,19 @@ bool Egl90_can_node::movePos(ipa325_egl90_can::MovePos::Request &req, ipa325_egl
 {
     fdata pos;
     pos.f = req.position;
-    bool error_flag = false;
 
-    struct can_frame txframe, rxframe;
-
-    txframe.can_id = _can_id;
-    txframe.can_dlc = 6;
-
-    txframe.data[0] = 5;
+    ROS_INFO("Sending movePos message");
+    can::Frame txframe = can::Frame(can::MsgHeader(_can_id));
+    txframe.data[0] = 0x05;
     txframe.data[1] = 0xB0; //CMD Byte
 
     txframe.data[2] = pos.c[0];
     txframe.data[3] = pos.c[1];
     txframe.data[4] = pos.c[2];
     txframe.data[5] = pos.c[3];
+    txframe.dlc = 6;
+
+    _can_driver.send(txframe);
 
 //    write(_can_socket, &txframe, sizeof(struct can_frame));
 //    do
@@ -277,38 +280,39 @@ bool Egl90_can_node::movePos(ipa325_egl90_can::MovePos::Request &req, ipa325_egl
 bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_egl90_can::MoveGrip::Response &res)
 {
      ROS_INFO("move_grip seems not to be available in module 12, this is the alternativ implementation using velocity cmd and underlying current control!");
-
      ROS_WARN("The parameter you give in this command will be the default parameters for future move_pos commands!");
 
      fdata vel, cur;
-     bool error_flag = false;
 
      vel.f = req.speed;
      cur.f = req.current;
-     struct can_frame tx1frame, tx2frame, rxframe;
 
-     tx1frame.can_id = _can_id;
-     tx2frame.can_id = _can_id;
-     tx1frame.can_dlc = 8;
+     ROS_INFO("Sending move_vel message");
+     can::Frame txframe1 = can::Frame(can::MsgHeader(_can_id));
+     can::Frame txframe2 = can::Frame(can::MsgHeader(_can_id));
 
-     tx1frame.data[0] = 9; // DLEN Total Data length to come (1Byte CMD + 4Byte Vel + 4Byte Cur)
-     tx1frame.data[1] = 0x84; // First fragment (Fragmentsmarker do not count in DLEN)
-     tx1frame.data[2] = 0xB5; // Move_vel
+     txframe1.data[0] = 9; // DLEN Total Data length to come (1Byte CMD + 4Byte Vel + 4Byte Cur)
+     txframe1.data[1] = 0x84; // First fragment (Fragmentsmarker do not count in DLEN)
+     txframe1.data[2] = 0xB5; // Move_vel
 
-     tx1frame.data[3] = vel.c[0];
-     tx1frame.data[4] = vel.c[1];
-     tx1frame.data[5] = vel.c[2];
-     tx1frame.data[6] = vel.c[3];
+     txframe1.data[3] = vel.c[0];
+     txframe1.data[4] = vel.c[1];
+     txframe1.data[5] = vel.c[2];
+     txframe1.data[6] = vel.c[3];
 
-     tx1frame.data[7] = cur.c[0];
+     txframe1.data[7] = cur.c[0];
+     txframe1.dlc = 8;
 
-     tx2frame.data[0] = 3;
-     tx2frame.data[1] = 0x86; //Last fragment
-     tx2frame.data[2] = cur.c[1];
-     tx2frame.data[3] = cur.c[2];
-     tx2frame.data[4] = cur.c[3];
-     tx2frame.can_dlc = 5;
+     txframe2.data[0] = 3;
+     txframe2.data[1] = 0x86; //Last fragment
+     txframe2.data[2] = cur.c[1];
+     txframe2.data[3] = cur.c[2];
+     txframe2.data[4] = cur.c[3];
 
+     txframe2.dlc = 5;
+
+     _can_driver.send(txframe1);
+     _can_driver.send(txframe2);
 //     write(_can_socket, &tx1frame, sizeof(struct can_frame));
 //     write(_can_socket, &tx2frame, sizeof(struct can_frame));
 
