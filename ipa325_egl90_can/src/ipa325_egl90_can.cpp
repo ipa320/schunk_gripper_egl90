@@ -37,7 +37,7 @@ Egl90_can_node::Egl90_can_node()
         exit(-2);
     }
     // read own messages: false
-    can::CommInterface::FrameListener::Ptr _respListener = _can_driver.createMsgListener(can::MsgHeader(_can_module_id), &Egl90_can_node::handleFrame_response);
+    _respListener = _can_driver.createMsgListener(can::MsgHeader(_can_module_id), can::CommInterface::FrameDelegate(this, &Egl90_can_node::handleFrame_response));
 
      ROS_INFO("Can socket binding was successful!");
      acknowledge();
