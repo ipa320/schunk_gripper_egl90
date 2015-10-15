@@ -1,8 +1,8 @@
 #ifndef EGL90_CAN_H_
 #define EGL90_CAN_H_
 
-#include <sys/socket.h>
-#include <linux/can.h>
+#include <socketcan_interface/socketcan.h>
+#include <socketcan_interface/threading.h>
 
 #include <ros/ros.h>
 
@@ -17,7 +17,7 @@ union fdata{
 };
 
 //Variable for converting status data
-struct stat{
+struct egl_status{
     float position;
     float speed;
     float current;
@@ -27,7 +27,7 @@ struct stat{
 
 union statusData{
     char c[14];
-    stat status;
+    egl_status status;
 };
 
 class Egl90_can_node
@@ -37,6 +37,7 @@ public:
     void spin();
 
     statusData updateState();
+    void acknowledge();
 private:
 
     static bool _shutdownSignal;
@@ -51,8 +52,9 @@ private:
     ros::ServiceServer _srv_stop;
     ros::ServiceServer _srv_getState;
 
+    can::ThreadedSocketCANInterface _can_driver;
+    can::CommInterface::FrameListener::Ptr _respListener;
 
-    int _can_socket;
     unsigned int _can_id;
     unsigned int _can_module_id;
     std::string _can_socket_id;
@@ -83,10 +85,13 @@ private:
     bool moveGrip(ipa325_egl90_can::MoveGrip::Request  &req,
                             ipa325_egl90_can::MoveGrip::Response &res);
 
+
     bool isCanAnswer(unsigned int cmd, const can_frame &rxframe, bool &error_flag);
 
     bool publishState();
     void timer_cb(const ros::TimerEvent &);
+
+    void handleFrame_response(const can::Frame &f);
 };
 
 #endif
