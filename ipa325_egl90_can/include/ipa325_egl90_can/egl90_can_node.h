@@ -10,6 +10,9 @@
 #include "ipa325_egl90_can/MovePos.h"
 #include "ipa325_egl90_can/MoveGrip.h"
 
+#include <boost/lockfree/stack.hpp>
+#include <boost/atomic.hpp>
+
 //Variables for converting float Data
 union fdata{
     char c[4];
@@ -32,6 +35,25 @@ union statusData{
 
 class Egl90_can_node
 {
+    enum CMD
+    {
+        CMD_REFERENCE = 0x92,
+        MOVE_POS = 0xB0,
+        MOVE_VEL = 0xB5,
+        MOVE_GRIP = 0xB7,
+        CMD_STOP = 0x91,
+        CMD_INFO = 0x8A,
+        CMD_ACK = 0x8B,
+        CMD_MOVE_BLOCKED = 0x93,
+        CMD_POS_REACHED = 0x94,
+        CMD_ERROR = 0x88,
+        GET_STATE = 0x95,
+        FRAG_ACK = 0x87,
+        FRAG_START = 0x84,
+        FRAG_MIDDLE = 0x85,
+        FRAG_END = 0x86
+    };
+
 public:
     Egl90_can_node();
     void spin();
@@ -56,10 +78,15 @@ private:
     can::CommInterface::FrameListener::Ptr _respListener;
     can::CommInterface::FrameListener::Ptr _errorListener;
 
+    unsigned int _module_adress;
     unsigned int _can_id;
     unsigned int _can_module_id;
     unsigned int _can_error_id;
     std::string _can_socket_id;
+
+    boost::lockfree::stack<unsigned int> _cmd_stack;
+    boost::lockfree::stack<unsigned int> _ok_cmd_stack;
+    boost::lockfree::stack<unsigned int> _error_cmd_stack;
 
     ros::Timer _timer;
     statusData _status;
@@ -89,6 +116,8 @@ private:
 
 
     bool isCanAnswer(unsigned int cmd, const can_frame &rxframe, bool &error_flag);
+
+    bool findInStack(const boost::lockfree::stack<unsigned int>& stack, unsigned int command);
 
     bool publishState();
     void timer_cb(const ros::TimerEvent &);
