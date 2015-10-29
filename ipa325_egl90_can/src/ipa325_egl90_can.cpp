@@ -487,7 +487,7 @@ bool Egl90_can_node::isDone(CMD cmd, bool& error_flag)
         switch (_cmd_map[cmd])
         {
             case ERROR:
-                ROS_ERROR("COMAND responded with an error");
+                ROS_ERROR("COMMAND responded with an error");
                 error_flag = true;
                 //TODO
             case OK:
