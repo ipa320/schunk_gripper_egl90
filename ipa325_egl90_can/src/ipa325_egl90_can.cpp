@@ -7,10 +7,7 @@
 
 bool Egl90_can_node::_shutdownSignal = false;
 
-Egl90_can_node::Egl90_can_node() :
-    _cmd_stack(128),
-    _ok_cmd_stack(128),
-    _error_cmd_stack(128)
+Egl90_can_node::Egl90_can_node()
 {
     //signal handler
     signal((int) SIGINT, Egl90_can_node::signalHandler);
@@ -55,6 +52,34 @@ Egl90_can_node::Egl90_can_node() :
 void Egl90_can_node::handleFrame_response(const can::Frame &f)
 {
     ROS_INFO("Received msg");
+    std::map<CMD, STATUS_CMD>::iterator search = _cmd_map.find((CMD)f.data[1]);
+    if(search != _cmd_map.end())
+    {
+        ROS_INFO("Found %n %n", search->first, search->second);
+        std::cout << "Found " << search->first << " " << search->second << '\n';
+        switch ((CMD)f.data[1])
+        {
+        case CMD_ACK:
+            break;
+        case CMD_REFERENCE:
+            break;
+        case MOVE_VEL:
+            if (f.dlc > 2 && f.data[2] == CMD_MOVE_BLOCKED)
+            {
+                search->second = OK;
+            }
+            break;
+        case MOVE_POS:
+            if (f.dlc == 2 && f.data[2] == CMD_POS_REACHED)
+            {
+                search->second = OK;
+            }
+            break;
+        }
+    }
+    else {
+        ROS_ERROR("Command not found");
+    }
     // TODO!!!
 }
 
@@ -78,30 +103,18 @@ bool Egl90_can_node::moveToReferencePos(std_srvs::Trigger::Request &req, std_srv
     txframe.data[1] = CMD_REFERENCE; //CMD Byte
     txframe.dlc = 2;
 
-    _cmd_stack.push(CMD_REFERENCE);
 //    _can_driver.send(can::toframe("50C#0192"));
     _can_driver.send(txframe);
+    _cmd_map[CMD_REFERENCE] = RUNNING;
 
     do
     {
         ros::Duration(0.01).sleep();
         ros::spinOnce();
     }
-    while (!findInStack(_ok_cmd_stack, CMD_REFERENCE) || _shutdownSignal);
+    while (!isDone(CMD_REFERENCE) || _shutdownSignal);
 
     return true;
-}
-
-bool Egl90_can_node::findInStack(const boost::lockfree::stack<unsigned int>& stack, unsigned int command)
-{
-    for (size_t i = 0; i < stack.size_type; i++)
-    {
-        if (stack[i] == command)
-        {
-            return true;
-        }
-    }
-    return false;
 }
 
 void Egl90_can_node::acknowledge()
@@ -112,7 +125,8 @@ void Egl90_can_node::acknowledge()
     txframe.data[1] = CMD_ACK; //CMD Byte
     txframe.dlc = 2;
 
-    _cmd_stack.push(CMD_ACK);
+
+    _cmd_map[CMD_ACK] = RUNNING;
     //_can_driver.send(can::toframe("50C#018B"));
     _can_driver.send(txframe);
 
@@ -133,7 +147,8 @@ bool Egl90_can_node::stop(std_srvs::Trigger::Request &req, std_srvs::Trigger::Re
     txframe.data[1] = CMD_STOP; //CMD Byte
     txframe.dlc = 2;
 
-    _cmd_stack.push(CMD_STOP);
+
+    _cmd_map[CMD_STOP] = RUNNING;
 //    _can_driver.send(can::toframe("50C#0191"));
     _can_driver.send(txframe);
 
@@ -167,7 +182,8 @@ statusData Egl90_can_node::updateState()
     txframe.data[1] = GET_STATE; //CMD Byte
     txframe.dlc = 2;
 
-    _cmd_stack.push(GET_STATE);
+    _cmd_map[GET_STATE] = RUNNING;
+
 //    _can_driver.send(can::toframe("50C#0195"));
     _can_driver.send(txframe);
 
@@ -260,7 +276,8 @@ bool Egl90_can_node::movePos(ipa325_egl90_can::MovePos::Request &req, ipa325_egl
     txframe.data[5] = pos.c[3];
     txframe.dlc = 6;
 
-    _cmd_stack.push(MOVE_POS);
+    _cmd_map[MOVE_POS] = RUNNING;
+
     _can_driver.send(txframe);
 
 //    write(_can_socket, &txframe, sizeof(struct can_frame));
@@ -333,7 +350,8 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
      txframe2.data[4] = cur.c[3];
      txframe2.dlc = 5;
 
-     _cmd_stack.push(MOVE_VEL);
+     _cmd_map[MOVE_VEL] = RUNNING;
+
      _can_driver.send(txframe1);
      _can_driver.send(txframe2);
 //     write(_can_socket, &tx1frame, sizeof(struct can_frame));
@@ -437,6 +455,27 @@ bool Egl90_can_node::isCanAnswer(unsigned int cmd, const can_frame& rxframe, boo
     error_flag = (rxframe.data[0] == 0x02);
     return (rxframe.can_id == _can_module_id &&
             rxframe.data[1] == cmd);
+}
+
+bool Egl90_can_node::isDone(CMD cmd)
+{
+    if (_cmd_map.count(cmd) == 1)
+    {
+        switch (_cmd_map[cmd])
+        {
+            case ERROR:
+                ROS_ERROR("COMAND responded with an error");
+            case OK:
+                return true;
+                break;
+        }
+
+    }
+    else
+    {
+        ROS_ERROR("Waiting for an answer of a command, which cannot be found!");
+    }
+    return false;
 }
 
 void Egl90_can_node::spin()

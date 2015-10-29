@@ -10,8 +10,9 @@
 #include "ipa325_egl90_can/MovePos.h"
 #include "ipa325_egl90_can/MoveGrip.h"
 
-#include <boost/lockfree/stack.hpp>
 #include <boost/atomic.hpp>
+
+#include <map>
 
 //Variables for converting float Data
 union fdata{
@@ -54,6 +55,14 @@ class Egl90_can_node
         FRAG_END = 0x86
     };
 
+    enum STATUS_CMD
+    {
+        PENDING,
+        RUNNING,
+        OK,
+        ERROR
+    };
+
 public:
     Egl90_can_node();
     void spin();
@@ -84,9 +93,7 @@ private:
     unsigned int _can_error_id;
     std::string _can_socket_id;
 
-    boost::lockfree::stack<unsigned int> _cmd_stack;
-    boost::lockfree::stack<unsigned int> _ok_cmd_stack;
-    boost::lockfree::stack<unsigned int> _error_cmd_stack;
+    std::map<CMD, STATUS_CMD> _cmd_map;
 
     ros::Timer _timer;
     statusData _status;
@@ -117,7 +124,7 @@ private:
 
     bool isCanAnswer(unsigned int cmd, const can_frame &rxframe, bool &error_flag);
 
-    bool findInStack(const boost::lockfree::stack<unsigned int>& stack, unsigned int command);
+    bool isDone(CMD cmd);
 
     bool publishState();
     void timer_cb(const ros::TimerEvent &);
