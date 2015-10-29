@@ -52,7 +52,9 @@ class Egl90_can_node
         FRAG_ACK = 0x87,
         FRAG_START = 0x84,
         FRAG_MIDDLE = 0x85,
-        FRAG_END = 0x86
+        FRAG_END = 0x86,
+        REPLY_OK_1 = 0x4F,
+        REPLY_OK_2 = 0x4B
     };
 
     enum STATUS_CMD

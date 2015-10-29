@@ -55,26 +55,67 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
     std::map<CMD, STATUS_CMD>::iterator search = _cmd_map.find((CMD)f.data[1]);
     if(search != _cmd_map.end())
     {
-        ROS_INFO("Found %n %n", search->first, search->second);
+        ROS_INFO("Found %d %d", search->first, search->second);
         std::cout << "Found " << search->first << " " << search->second << '\n';
-        switch ((CMD)f.data[1])
+        if (f.dlc >= 2 && f.data[2] == CMD_ERROR)
         {
-        case CMD_ACK:
-            break;
-        case CMD_REFERENCE:
-            break;
-        case MOVE_VEL:
-            if (f.dlc > 2 && f.data[2] == CMD_MOVE_BLOCKED)
+            search->second = ERROR;
+        }
+        else
             {
-                search->second = OK;
-            }
-            break;
-        case MOVE_POS:
-            if (f.dlc == 2 && f.data[2] == CMD_POS_REACHED)
+            switch (search->first)
             {
-                search->second = OK;
+            case CMD_ACK:
+                if (f.dlc >= 3 && f.data[2] == REPLY_OK_1 && f.data[3] == REPLY_OK_2)
+                {
+                    search->second = OK;
+                }
+                break;
+            case CMD_REFERENCE:
+                if (f.dlc >= 3 && f.data[2] == REPLY_OK_1 && f.data[3] == REPLY_OK_2)
+                {
+                    search->second = RUNNING;
+                }
+                if (f.dlc >= 2 && f.data[2] == CMD_MOVE_BLOCKED)
+                {
+                    search->second = ERROR;
+                }
+                if (f.dlc >= 2 && f.data[2] == CMD_POS_REACHED)
+                {
+                    search->second = OK;
+                }
+                break;
+            case MOVE_VEL:
+                if (f.dlc >= 3 && f.data[2] == REPLY_OK_1 && f.data[3] == REPLY_OK_2)
+                {
+                    search->second = RUNNING;
+                }
+                if (f.dlc >= 2 && f.data[2] == CMD_MOVE_BLOCKED)
+                {
+                    search->second = OK;
+                }
+                break;
+            case MOVE_POS:
+                if (f.dlc >= 3 && f.data[2] == REPLY_OK_1 && f.data[3] == REPLY_OK_2)
+                {
+                    search->second = RUNNING;
+                }
+                if (f.dlc >= 2 && f.data[2] == CMD_MOVE_BLOCKED)
+                {
+                    search->second = ERROR;
+                }
+                if (f.dlc >= 2 && f.data[2] == CMD_POS_REACHED)
+                {
+                    search->second = OK;
+                }
+                break;
+            case CMD_STOP:
+                if (f.dlc >= 3 && f.data[2] == REPLY_OK_1 && f.data[3] == REPLY_OK_2)
+                {
+                    search->second = OK;
+                }
+                break;
             }
-            break;
         }
     }
     else {
