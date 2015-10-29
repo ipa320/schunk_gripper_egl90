@@ -177,16 +177,33 @@ void Egl90_can_node::acknowledge()
     txframe.data[1] = CMD_ACK; //CMD Byte
     txframe.dlc = 2;
 
-
-    _cmd_map[CMD_ACK] = RUNNING;
     //_can_driver.send(can::toframe("50C#018B"));
     _can_driver.send(txframe);
-
 }
 
 bool Egl90_can_node::acknowledge(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res)
 {
+    bool error_flag = false;
     acknowledge();
+    _cmd_map[CMD_ACK] = RUNNING;
+
+    do
+    {
+        ros::Duration(0.01).sleep();
+        ros::spinOnce();
+    }
+    while (!isDone(CMD_ACK, error_flag) || _shutdownSignal);
+
+    if (error_flag)
+    {
+        res.success = false;
+        res.message = "Module did reply with error!";
+    }
+    else
+    {
+        res.success = true;
+        res.message = "Module did reply properly!";
+    }
     return true;
 }
 
@@ -199,30 +216,29 @@ bool Egl90_can_node::stop(std_srvs::Trigger::Request &req, std_srvs::Trigger::Re
     txframe.data[1] = CMD_STOP; //CMD Byte
     txframe.dlc = 2;
 
+    bool error_flag = false;
 
     _cmd_map[CMD_STOP] = RUNNING;
 //    _can_driver.send(can::toframe("50C#0191"));
     _can_driver.send(txframe);
 
-//    write(_can_socket, &txframe, sizeof(struct can_frame));
-//    do
-//    {
-//        ros::Duration(0.01).sleep();
-//        read(_can_socket, &rxframe, sizeof(struct can_frame));
-//    } while (!isCanAnswer(0x91, rxframe, error_flag) || _shutdownSignal);
+    do
+    {
+        ros::Duration(0.01).sleep();
+        ros::spinOnce();
+    }
+    while (!isDone(CMD_STOP, error_flag) || _shutdownSignal);
 
-//    if (error_flag)
-//    {
-//        res.success = false;
-//        res.message = "Module did reply with error 0x02!";
-//    }
-//    else
-//    {
-//        res.success = true;
-//        res.message = "Module did reply properly!";
-//    }
-
-//    updateState();
+    if (error_flag)
+    {
+        res.success = false;
+        res.message = "Module did reply with error!";
+    }
+    else
+    {
+        res.success = true;
+        res.message = "Module did reply properly!";
+    }
     return true;
 }
 
@@ -328,46 +344,28 @@ bool Egl90_can_node::movePos(ipa325_egl90_can::MovePos::Request &req, ipa325_egl
     txframe.data[5] = pos.c[3];
     txframe.dlc = 6;
 
+    bool error_flag = false;
     _cmd_map[MOVE_POS] = RUNNING;
 
     _can_driver.send(txframe);
 
-//    write(_can_socket, &txframe, sizeof(struct can_frame));
-//    do
-//    {
-//        ros::Duration(0.01).sleep();
-//        read(_can_socket, &rxframe, sizeof(struct can_frame));
-//    } while (!isCanAnswer(0xB0, rxframe, error_flag) || _shutdownSignal);
+    do
+    {
+        ros::Duration(0.01).sleep();
+        ros::spinOnce();
+    }
+    while (!isDone(MOVE_POS, error_flag) || _shutdownSignal);
 
-//    if (error_flag)
-//    {
-//        res.success = false;
-//        res.message = "Module did reply with error 0x02!";
-//    }
-//    else
-//    {
-//        do // wait for position reached signal
-//        {
-//            ros::Duration(0.01).sleep();
-//            read(_can_socket, &rxframe, sizeof(struct can_frame));
-//        } while ((rxframe.can_dlc < 2 && rxframe.data[2] != 0x94) || _shutdownSignal); // 0x94 is CMD_POS_REACHED
-
-//        // TODO: timeout while reading socket
-//        bool timeout = false;
-//        if (timeout)
-//        {
-//            res.success = false;
-//            res.message = "Module did not reply properly!";
-//            return true;
-//        }
-//        else
-//        {
-//            res.success = true;
-//            res.message = "Module reached position!";
-//        }
-//    }
-
-//    updateState();
+    if (error_flag)
+    {
+        res.success = false;
+        res.message = "Module did reply with error!";
+    }
+    else
+    {
+        res.success = true;
+        res.message = "Module did reply properly!";
+    }
     return true;
 }
 
@@ -402,48 +400,28 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
      txframe2.data[4] = cur.c[3];
      txframe2.dlc = 5;
 
+     bool error_flag = false;
      _cmd_map[MOVE_VEL] = RUNNING;
 
      _can_driver.send(txframe1);
      _can_driver.send(txframe2);
-//     write(_can_socket, &tx1frame, sizeof(struct can_frame));
-//     write(_can_socket, &tx2frame, sizeof(struct can_frame));
+     do
+     {
+         ros::Duration(0.01).sleep();
+         ros::spinOnce();
+     }
+     while (!isDone(MOVE_VEL, error_flag) || _shutdownSignal);
 
-//     do
-//     {
-//         ros::Duration(0.01).sleep();
-//         read(_can_socket, &rxframe, sizeof(struct can_frame));
-//     } while (!isCanAnswer(0xB5, rxframe, error_flag) || _shutdownSignal);
-
-//     if (error_flag)
-//     {
-//         res.success = false;
-//         res.message = "Module did reply with error 0x02!";
-//     }
-//     else
-//     {
-//         do // wait for motion blocked signal
-//         {
-//             ros::Duration(0.01).sleep();
-//             read(_can_socket, &rxframe, sizeof(struct can_frame));
-//         } while ((rxframe.can_dlc < 2 && rxframe.data[2] != 0x93) || _shutdownSignal); // 0x93 is CMD_MOVE_BLOCKED
-
-//         // TODO: timeout while reading socket
-//         bool timeout = false;
-//         if (timeout)
-//         {
-//             res.success = false;
-//             res.message = "Module did not reply properly!";
-//             return true;
-//         }
-//         else
-//         {
-//             res.success = true;
-//             res.message = "Module reached position!";
-//         }
-//     }
-
-//     updateState();
+     if (error_flag)
+     {
+         res.success = false;
+         res.message = "Module did reply with error!";
+     }
+     else
+     {
+         res.success = true;
+         res.message = "Module did reply properly!";
+     }
      return true;
      // --------------move grip --------------------------//
 /*     fdata cur;
@@ -500,13 +478,6 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
 
      return true;
 */
-}
-
-bool Egl90_can_node::isCanAnswer(unsigned int cmd, const can_frame& rxframe, bool& error_flag)
-{
-    error_flag = (rxframe.data[0] == 0x02);
-    return (rxframe.can_id == _can_module_id &&
-            rxframe.data[1] == cmd);
 }
 
 bool Egl90_can_node::isDone(CMD cmd, bool& error_flag)

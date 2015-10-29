@@ -123,9 +123,6 @@ private:
     bool moveGrip(ipa325_egl90_can::MoveGrip::Request  &req,
                             ipa325_egl90_can::MoveGrip::Response &res);
 
-
-    bool isCanAnswer(unsigned int cmd, const can_frame &rxframe, bool &error_flag);
-
     bool isDone(CMD cmd, bool& error_flag);
 
     bool publishState();
