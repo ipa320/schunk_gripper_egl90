@@ -126,7 +126,7 @@ private:
 
     bool isCanAnswer(unsigned int cmd, const can_frame &rxframe, bool &error_flag);
 
-    bool isDone(CMD cmd);
+    bool isDone(CMD cmd, bool& error_flag);
 
     bool publishState();
     void timer_cb(const ros::TimerEvent &);

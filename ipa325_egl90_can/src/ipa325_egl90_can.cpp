@@ -143,6 +143,7 @@ bool Egl90_can_node::moveToReferencePos(std_srvs::Trigger::Request &req, std_srv
     txframe.data[0] = 0x01;
     txframe.data[1] = CMD_REFERENCE; //CMD Byte
     txframe.dlc = 2;
+    bool error_flag = false;
 
 //    _can_driver.send(can::toframe("50C#0192"));
     _can_driver.send(txframe);
@@ -153,8 +154,18 @@ bool Egl90_can_node::moveToReferencePos(std_srvs::Trigger::Request &req, std_srv
         ros::Duration(0.01).sleep();
         ros::spinOnce();
     }
-    while (!isDone(CMD_REFERENCE) || _shutdownSignal);
+    while (!isDone(CMD_REFERENCE, error_flag) || _shutdownSignal);
 
+    if (error_flag)
+    {
+        res.success = false;
+        res.message = "Module did reply with error!";
+    }
+    else
+    {
+        res.success = true;
+        res.message = "Module did reply properly!";
+    }
     return true;
 }
 
@@ -498,7 +509,7 @@ bool Egl90_can_node::isCanAnswer(unsigned int cmd, const can_frame& rxframe, boo
             rxframe.data[1] == cmd);
 }
 
-bool Egl90_can_node::isDone(CMD cmd)
+bool Egl90_can_node::isDone(CMD cmd, bool& error_flag)
 {
     if (_cmd_map.count(cmd) == 1)
     {
@@ -506,7 +517,10 @@ bool Egl90_can_node::isDone(CMD cmd)
         {
             case ERROR:
                 ROS_ERROR("COMAND responded with an error");
+                error_flag = true;
+                //TODO
             case OK:
+                _cmd_map.erase(cmd);
                 return true;
                 break;
         }
