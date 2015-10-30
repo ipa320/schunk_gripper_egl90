@@ -47,6 +47,7 @@ class Egl90_can_node
         CMD_ACK = 0x8B,
         CMD_MOVE_BLOCKED = 0x93,
         CMD_POS_REACHED = 0x94,
+        CMD_WARNING = 0x89,
         CMD_ERROR = 0x88,
         GET_STATE = 0x95,
         FRAG_ACK = 0x87,
@@ -70,7 +71,6 @@ public:
     void spin();
 
     statusData updateState();
-    void acknowledge();
 private:
 
     static bool _shutdownSignal;
