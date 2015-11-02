@@ -210,9 +210,9 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
 
 void Egl90_can_node::handleFrame_error(const can::Frame &f)
 {
-    ROS_ERROR("Received error msg");
+    ROS_ERROR("Received error msg: %x", f.data[1]);
     // TODO!!!
-     std::map<CMD, STATUS_CMD>::iterator search;
+    std::map<CMD, STATUS_CMD>::iterator search;
     switch(f.data[1])
     {
     case CMD_ERROR:
@@ -239,6 +239,31 @@ void Egl90_can_node::handleFrame_error(const can::Frame &f)
 //    std_srvs::Trigger::Request  req;
 //    std_srvs::Trigger::Response res;
     //acknowledge(req, res);
+}
+
+bool Egl90_can_node::setState(Egl90_can_node::CMD command, Egl90_can_node::STATUS_CMD status)
+{
+    if (getState(command) != CMD_NOT_FOUND)
+    {
+        boost::shared_lock<boost::shared_mutex> lock(_cmd_map_access);
+        boost::upgrade_to_unique_lock<boost::shared_mutex> uniqueLock(lock);
+        _cmd_map[command] = status;
+        return true;
+    }
+    return false;
+}
+
+Egl90_can_node::STATUS_CMD Egl90_can_node::getState(Egl90_can_node::CMD command)
+{
+    STATUS_CMD status = CMD_NOT_FOUND;
+
+    boost::shared_lock<boost::shared_mutex> lock(_cmd_map_access);
+    std::map<CMD, STATUS_CMD>::iterator search = _cmd_map.find(command);
+    if (search != _cmd_map.end())
+    {
+        status = search->second;
+    }
+    return status;
 }
 
 

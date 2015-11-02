@@ -10,7 +10,8 @@
 #include "ipa325_egl90_can/MovePos.h"
 #include "ipa325_egl90_can/MoveGrip.h"
 
-#include <boost/atomic.hpp>
+//#include <boost/atomic.hpp>
+#include <boost/thread.hpp>
 
 #include <map>
 
@@ -60,6 +61,7 @@ class Egl90_can_node
 
     enum STATUS_CMD
     {
+        CMD_NOT_FOUND,
         PENDING,
         RUNNING,
         OK,
@@ -95,6 +97,7 @@ private:
     unsigned int _can_error_id;
     std::string _can_socket_id;
 
+    boost::shared_mutex _cmd_map_access;
     std::map<CMD, STATUS_CMD> _cmd_map;
 
     ros::Timer _timer;
@@ -131,6 +134,8 @@ private:
     void handleFrame_response(const can::Frame &f);
     void handleFrame_error(const can::Frame &f);
 
+    bool setState(CMD command, STATUS_CMD status);
+    STATUS_CMD getState(CMD command);
 };
 
 #endif
