@@ -63,68 +63,29 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
         case CMD_INFO:
             break;
         case CMD_MOVE_BLOCKED:
-            search = _cmd_map.find(CMD_REFERENCE);
-            if (search != _cmd_map.end())
-            {
-                search->second = ERROR;
-            }
+            setState(CMD_REFERENCE, ERROR);
+            setState(MOVE_POS, ERROR);
+            setState(MOVE_VEL, OK);
 
-            search = _cmd_map.find(MOVE_POS);
-            if (search != _cmd_map.end())
-            {
-                search->second = ERROR;
-            }
-
-            search = _cmd_map.find(MOVE_VEL);
-            if (search != _cmd_map.end())
-            {
-                search->second = OK;
-            }
             break;
         case CMD_WARNING: //TODO
         case CMD_POS_REACHED:
-            search = _cmd_map.find(CMD_REFERENCE);
-            if (search != _cmd_map.end())
-            {
-                search->second = OK;
-            }
+            setState(CMD_REFERENCE, OK);
+            setState(MOVE_POS, OK);
+            setState(MOVE_VEL, OK);
 
-            search = _cmd_map.find(MOVE_POS);
-            if (search != _cmd_map.end())
-            {
-                search->second = OK;
-            }
-
-            search = _cmd_map.find(MOVE_VEL);
-            if (search != _cmd_map.end())
-            {
-                search->second = OK;
-            }
             break;
         case CMD_ERROR:
-            search = _cmd_map.find(CMD_REFERENCE);
-            if (search != _cmd_map.end())
-            {
-                search->second = ERROR;
-            }
+            setState(CMD_REFERENCE, ERROR);
+            setState(MOVE_POS, ERROR);
+            setState(MOVE_VEL, ERROR);
 
-            search = _cmd_map.find(MOVE_POS);
-            if (search != _cmd_map.end())
-            {
-                search->second = ERROR;
-            }
-
-            search = _cmd_map.find(MOVE_VEL);
-            if (search != _cmd_map.end())
-            {
-                search->second = ERROR;
-            }
             break;
         }
     }
     else
     {
-        ROS_INFO("Found %d %d", search->first, search->second);
+        ROS_INFO("Found %x %x", search->first, search->second);
         if (f.dlc >= 2 && f.data[2] == CMD_ERROR)
         {
             search->second = ERROR;
@@ -136,70 +97,91 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
             case CMD_ACK:
                 if (f.dlc >= 3 && f.data[2] == REPLY_OK_1 && f.data[3] == REPLY_OK_2)
                 {
+                    boost::mutex::scoped_lock lock(_mutex);
                     search->second = OK;
+                    lock.unlock();
+                    _cond.notify_one();
                 }
                 break;
             case CMD_REFERENCE:
                 if (f.dlc >= 3 && f.data[2] == REPLY_OK_1 && f.data[3] == REPLY_OK_2)
                 {
+                    boost::mutex::scoped_lock lock(_mutex);
                     search->second = RUNNING;
+                    lock.unlock();
+                    _cond.notify_one();
                 }
                 if (f.dlc >= 2 && f.data[2] == CMD_MOVE_BLOCKED)
                 {
+                    boost::mutex::scoped_lock lock(_mutex);
                     search->second = ERROR;
+                    lock.unlock();
+                    _cond.notify_one();
                 }
                 if (f.dlc >= 2 && f.data[2] == CMD_POS_REACHED)
                 {
+
+                    boost::mutex::scoped_lock lock(_mutex);
                     search->second = OK;
+                    lock.unlock();
+                    _cond.notify_one();
                 }
                 break;
             case MOVE_VEL:
                 if (f.dlc >= 3 && f.data[2] == REPLY_OK_1 && f.data[3] == REPLY_OK_2)
                 {
+
+                    boost::mutex::scoped_lock lock(_mutex);
                     search->second = RUNNING;
+                    lock.unlock();
+                    _cond.notify_one();
                 }
                 if (f.dlc >= 2 && f.data[2] == CMD_MOVE_BLOCKED)
                 {
+
+                    boost::mutex::scoped_lock lock(_mutex);
                     search->second = OK;
+                    lock.unlock();
+                    _cond.notify_one();
                 }
                 break;
             case MOVE_POS:
                 if (f.dlc >= 3 && f.data[2] == REPLY_OK_1 && f.data[3] == REPLY_OK_2)
                 {
+                    boost::mutex::scoped_lock lock(_mutex);
                     search->second = RUNNING;
+                    lock.unlock();
+                    _cond.notify_one();
                 }
                 if (f.dlc >= 2 && f.data[2] == CMD_MOVE_BLOCKED)
                 {
+
+                    boost::mutex::scoped_lock lock(_mutex);
                     search->second = ERROR;
+                    lock.unlock();
+                    _cond.notify_one();
                 }
                 if (f.dlc >= 2 && f.data[2] == CMD_POS_REACHED)
                 {
+                    boost::mutex::scoped_lock lock(_mutex);
                     search->second = OK;
+                    lock.unlock();
+                    _cond.notify_one();
                 }
                 break;
             case CMD_STOP:
                 if (f.dlc >= 3 && f.data[2] == REPLY_OK_1 && f.data[3] == REPLY_OK_2)
                 {
+
+                    boost::mutex::scoped_lock lock(_mutex);
                     search->second = OK;
+                    lock.unlock();
+                    _cond.notify_one();
 
                     // Special case that if stop was called, other motion commands are canceled!
-                    search = _cmd_map.find(CMD_REFERENCE);
-                    if (search != _cmd_map.end())
-                    {
-                        search->second = ERROR;
-                    }
-
-                    search = _cmd_map.find(MOVE_POS);
-                    if (search != _cmd_map.end())
-                    {
-                        search->second = ERROR;
-                    }
-
-                    search = _cmd_map.find(MOVE_VEL);
-                    if (search != _cmd_map.end())
-                    {
-                        search->second = OK;
-                    }
+                    setState(CMD_REFERENCE, ERROR);
+                    setState(MOVE_POS, ERROR);
+                    setState(MOVE_VEL, OK);
 
                 }
                 break;
@@ -210,29 +192,19 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
 
 void Egl90_can_node::handleFrame_error(const can::Frame &f)
 {
-    ROS_ERROR("Received error msg: %x", f.data[1]);
+    ROS_ERROR("Received error msg: %x %x", f.data[1], f.data[2]);
     // TODO!!!
-    std::map<CMD, STATUS_CMD>::iterator search;
     switch(f.data[1])
     {
     case CMD_ERROR:
-        search = _cmd_map.find(CMD_REFERENCE);
-        if (search != _cmd_map.end())
-        {
-            search->second = ERROR;
-        }
+        setState(CMD_REFERENCE, ERROR);
 
-        search = _cmd_map.find(MOVE_POS);
-        if (search != _cmd_map.end())
-        {
-            search->second = ERROR;
-        }
+        setState(MOVE_POS, ERROR);
 
-        search = _cmd_map.find(MOVE_VEL);
-        if (search != _cmd_map.end())
-        {
-            search->second = OK;
-        }
+        setState(MOVE_VEL, ERROR);
+        // TODO check for softstop and may put MOVE_VEL to ok
+        //setState(MOVE_VEL, OK);
+
         break;
     }
 //    ROS_WARN("For now just try acknoledging it!");
@@ -245,9 +217,10 @@ bool Egl90_can_node::setState(Egl90_can_node::CMD command, Egl90_can_node::STATU
 {
     if (getState(command) != CMD_NOT_FOUND)
     {
-        boost::shared_lock<boost::shared_mutex> lock(_cmd_map_access);
-        boost::upgrade_to_unique_lock<boost::shared_mutex> uniqueLock(lock);
+        boost::mutex::scoped_lock lock(_mutex);
         _cmd_map[command] = status;
+        lock.unlock();
+        _cond.notify_one();
         return true;
     }
     return false;
@@ -257,12 +230,13 @@ Egl90_can_node::STATUS_CMD Egl90_can_node::getState(Egl90_can_node::CMD command)
 {
     STATUS_CMD status = CMD_NOT_FOUND;
 
-    boost::shared_lock<boost::shared_mutex> lock(_cmd_map_access);
+    boost::mutex::scoped_lock lock(_mutex);
     std::map<CMD, STATUS_CMD>::iterator search = _cmd_map.find(command);
     if (search != _cmd_map.end())
     {
         status = search->second;
     }
+    lock.unlock();
     return status;
 }
 
@@ -283,7 +257,7 @@ bool Egl90_can_node::moveToReferencePos(std_srvs::Trigger::Request &req, std_srv
 
 //    _can_driver.send(can::toframe("50C#0192"));
     _can_driver.send(txframe);
-    _cmd_map[CMD_REFERENCE] = PENDING;
+    setState(CMD_REFERENCE, PENDING);
 
     do
     {
@@ -314,7 +288,8 @@ bool Egl90_can_node::acknowledge(std_srvs::Trigger::Request &req, std_srvs::Trig
     txframe.data[1] = CMD_ACK; //CMD Byte
     txframe.dlc = 2;
 
-    _cmd_map[CMD_ACK] = PENDING;
+    setState(CMD_ACK, PENDING);
+
     //_can_driver.send(can::toframe("50C#018B"));
     _can_driver.send(txframe);
 
@@ -351,7 +326,8 @@ bool Egl90_can_node::stop(std_srvs::Trigger::Request &req, std_srvs::Trigger::Re
 
     bool error_flag = false;
 
-    _cmd_map[CMD_STOP] = PENDING;
+    setState(CMD_STOP, PENDING);
+
 //    _can_driver.send(can::toframe("50C#0191"));
     _can_driver.send(txframe);
 
@@ -383,7 +359,7 @@ statusData Egl90_can_node::updateState()
     txframe.data[1] = GET_STATE; //CMD Byte
     txframe.dlc = 2;
 
-    _cmd_map[GET_STATE] = PENDING;
+    setState(GET_STATE, PENDING);
 
 //    _can_driver.send(can::toframe("50C#0195"));
     _can_driver.send(txframe);
@@ -478,7 +454,7 @@ bool Egl90_can_node::movePos(ipa325_egl90_can::MovePos::Request &req, ipa325_egl
     txframe.dlc = 6;
 
     bool error_flag = false;
-    _cmd_map[MOVE_POS] = PENDING;
+    setState(MOVE_POS, PENDING);
 
     _can_driver.send(txframe);
 
@@ -534,7 +510,8 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
      txframe2.dlc = 5;
 
      bool error_flag = false;
-     _cmd_map[MOVE_VEL] = PENDING;
+
+     setState(MOVE_VEL, PENDING);
 
      _can_driver.send(txframe1);
      _can_driver.send(txframe2);

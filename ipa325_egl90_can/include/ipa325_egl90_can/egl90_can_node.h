@@ -97,7 +97,9 @@ private:
     unsigned int _can_error_id;
     std::string _can_socket_id;
 
-    boost::shared_mutex _cmd_map_access;
+    boost::mutex _mutex;
+    boost::condition_variable _cond;
+
     std::map<CMD, STATUS_CMD> _cmd_map;
 
     ros::Timer _timer;
