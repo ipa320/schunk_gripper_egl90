@@ -53,7 +53,7 @@ Egl90_can_node::Egl90_can_node()
 
 void Egl90_can_node::handleFrame_response(const can::Frame &f)
 {
-    ROS_INFO("Received msg");
+    ROS_INFO("Received msg CMD=%x", f.data[1]);
     std::map<CMD, STATUS_CMD>::iterator search = _cmd_map.find((CMD)f.data[1]);
 
     if(search == _cmd_map.end()) // CMD not found in list, probably a spontanious msg
@@ -218,6 +218,16 @@ bool Egl90_can_node::setState(Egl90_can_node::CMD command, Egl90_can_node::STATU
     if (getState(command) != CMD_NOT_FOUND)
     {
         boost::mutex::scoped_lock lock(_mutex);
+        //instance counter++
+        _cmd_map[command] = status;
+        lock.unlock();
+        _cond.notify_one();
+        return true;
+    }
+    else
+    {
+        boost::mutex::scoped_lock lock(_mutex);
+        // new creation
         _cmd_map[command] = status;
         lock.unlock();
         _cond.notify_one();
@@ -239,7 +249,6 @@ Egl90_can_node::STATUS_CMD Egl90_can_node::getState(Egl90_can_node::CMD command)
     lock.unlock();
     return status;
 }
-
 
 void Egl90_can_node::timer_cb(const ros::TimerEvent&)
 {
@@ -592,6 +601,7 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
 
 bool Egl90_can_node::isDone(CMD cmd, bool& error_flag)
 {
+    bool isDone = false;
     if (_cmd_map.count(cmd) == 1)
     {
         switch (_cmd_map[cmd])
@@ -601,18 +611,20 @@ bool Egl90_can_node::isDone(CMD cmd, bool& error_flag)
                 error_flag = true;
                 //TODO
             case OK:
-                ROS_INFO("Comamnd is done with ok");
+                ROS_INFO("Command is done with ok");
+                boost::mutex::scoped_lock lock(_mutex);
+                // new creation
                 _cmd_map.erase(cmd);
-                return true;
-                break;
+                lock.unlock();
+                isDone = true;
+            break;
         }
-
     }
     else
     {
         ROS_ERROR("Waiting for an answer of a command, which cannot be found!");
     }
-    return false;
+    return isDone;
 }
 
 void Egl90_can_node::spin()
