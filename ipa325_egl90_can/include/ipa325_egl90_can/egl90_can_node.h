@@ -68,6 +68,51 @@ class Egl90_can_node
         ERROR
     };
 
+    enum ERROR_CODE
+    {
+        INFO_BOOT = 1,
+        INFO_NO_RIGHTS = 3,
+        INFO_UNKNOWN_COMMAND = 4,
+        INFO_FAILED = 5,
+        NOT_REFERENCED = 6,
+        INFO_SEARCH_SINE_VECTOR = 7,
+        INFO_NO_ERROR = 8,
+        INFO_COMMUNICATION_ERROR = 9,
+        INFO_TIMEOUT = 16,
+        INFO_UNKNOWN_AXIS_INDEX = 17,
+        INFO_WRONG_BAUDRATE = 22,
+        INFO_CHECKSUM = 25,
+        INFO_MESSAGE_LENGTH = 29,
+        INFO_WRONG_PARAMETER = 30,
+        ERROR_TEMP_LOW = 112,
+        ERROR_TEMP_HIGH = 113,
+        ERROR_LOGIC_LOW = 114,
+        ERROR_LOGIC_HIGH = 115,
+        ERROR_MOTOR_VOLTAGE_LOW = 116,
+        ERROR_MOTOR_VOLTAGE_HIGH = 117,
+        ERROR_CABLE_BREAK = 118,
+        ERROR_OVERSHOOT = 130,
+        ERROR_WRONG_RAMP_TYPE = 200,
+        ERROR_CONFIG_MEMORY = 210,
+        ERROR_PROGRAM_MEMORY = 211,
+        ERROR_INVALIDE_PHRASE = 212,
+        ERROR_SOFT_LOW = 213,
+        ERROR_SOFT_HIGH = 214,
+        ERROR_SERVICE = 216,
+        ERROR_FAST_STOP = 217,
+        ERROR_TOW = 218,
+        ERROR_VPC3 = 219,
+        ERROR_FRAGMENTATION = 220,
+        ERROR_COMMUTATION = 221,
+        ERROR_CURRENT = 222,
+        ERROR_I2T = 223,
+        ERROR_INITIALIZE = 224,
+        ERROR_INTERNAL = 225,
+        ERROR_TOO_FAST = 228,
+        ERROR_RESOLVER_CHECK_FAILED = 229,
+        ERROR_MATH = 236,
+    };
+
 public:
     Egl90_can_node();
     void spin();
@@ -101,6 +146,10 @@ private:
     boost::condition_variable _cond;
 
     std::map<CMD, STATUS_CMD> _cmd_map;
+
+    std::map<CMD, std::string> _cmd_str;
+    std::map<STATUS_CMD, std::string> _status_cmd_str;
+    std::map<ERROR_CODE, std::string> _error_str;
 
     ros::Timer _timer;
     statusData _status;
@@ -137,7 +186,9 @@ private:
     void handleFrame_error(const can::Frame &f);
 
     bool setState(CMD command, STATUS_CMD status);
+    bool setState(CMD command, STATUS_CMD status, bool createIfNotFound);
     STATUS_CMD getState(CMD command);
+    void fillStrMaps();
 };
 
 #endif

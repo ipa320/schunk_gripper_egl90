@@ -15,6 +15,7 @@ Egl90_can_node::Egl90_can_node()
     _nh = ros::NodeHandle("~");
     std::string nodename = ros::this_node::getName();
 
+    fillStrMaps();
     _srv_ack = _nh.advertiseService(nodename+"/acknowledge", &Egl90_can_node::acknowledge, this);
     _srv_reference = _nh.advertiseService(nodename+"/reference_motion", &Egl90_can_node::moveToReferencePos, this);
     _srv_movePos = _nh.advertiseService(nodename+"/move_pos", &Egl90_can_node::movePos, this);
@@ -53,7 +54,7 @@ Egl90_can_node::Egl90_can_node()
 
 void Egl90_can_node::handleFrame_response(const can::Frame &f)
 {
-    ROS_INFO("Received msg CMD=%x", f.data[1]);
+    ROS_INFO("Received msg CMD=%x, %s", f.data[1], _cmd_str[(CMD)f.data[1]].c_str());
     std::map<CMD, STATUS_CMD>::iterator search = _cmd_map.find((CMD)f.data[1]);
 
     if(search == _cmd_map.end()) // CMD not found in list, probably a spontanious msg
@@ -85,7 +86,7 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
     }
     else
     {
-        ROS_INFO("Found %x %x", search->first, search->second);
+        ROS_INFO("Got response %x %x, %s %s", search->first, search->second, _cmd_str[(CMD)search->first].c_str(), _cmd_str[(CMD)search->second].c_str());
         if (f.dlc >= 2 && f.data[2] == CMD_ERROR)
         {
             search->second = ERROR;
@@ -192,30 +193,43 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
 
 void Egl90_can_node::handleFrame_error(const can::Frame &f)
 {
-    ROS_ERROR("Received error msg: %x %x", f.data[1], f.data[2]);
+    ROS_ERROR("Received error msg: %x %x, %s %s", f.data[1], f.data[2], _error_str[(ERROR_CODE)f.data[1]].c_str(), _error_str[(ERROR_CODE)f.data[2]].c_str());
     // TODO!!!
     switch(f.data[1])
     {
     case CMD_ERROR:
-        setState(CMD_REFERENCE, ERROR);
+        setState(CMD_REFERENCE, ERROR, false);
 
-        setState(MOVE_POS, ERROR);
+        setState(MOVE_POS, ERROR, false);
 
-        setState(MOVE_VEL, ERROR);
-        // TODO check for softstop and may put MOVE_VEL to ok
-        //setState(MOVE_VEL, OK);
-
+        // Check for softstop and may put MOVE_VEL to ok
+        switch(f.data[2])
+        {
+            case ERROR_SOFT_LOW:
+            case ERROR_SOFT_HIGH:
+                setState(MOVE_VEL, OK, false);
+                break;
+            default:
+                setState(MOVE_VEL, ERROR, false);
+                break;
+        }
         break;
     }
 //    ROS_WARN("For now just try acknoledging it!");
 //    std_srvs::Trigger::Request  req;
 //    std_srvs::Trigger::Response res;
-    //acknowledge(req, res);
+//    acknowledge(req, res);
+//    ros::Duration(0.5).sleep();
 }
 
 bool Egl90_can_node::setState(Egl90_can_node::CMD command, Egl90_can_node::STATUS_CMD status)
 {
-    if (getState(command) != CMD_NOT_FOUND)
+    return setState(command, status, true);
+}
+
+bool Egl90_can_node::setState(Egl90_can_node::CMD command, Egl90_can_node::STATUS_CMD status, bool createIfNotFound)
+{
+    if (createIfNotFound)
     {
         boost::mutex::scoped_lock lock(_mutex);
         //instance counter++
@@ -226,14 +240,20 @@ bool Egl90_can_node::setState(Egl90_can_node::CMD command, Egl90_can_node::STATU
     }
     else
     {
-        boost::mutex::scoped_lock lock(_mutex);
-        // new creation
-        _cmd_map[command] = status;
-        lock.unlock();
-        _cond.notify_one();
-        return true;
+        if (getState(command) != CMD_NOT_FOUND)
+        {
+            boost::mutex::scoped_lock lock(_mutex);
+            // new creation
+            _cmd_map[command] = status;
+            lock.unlock();
+            _cond.notify_one();
+            return true;
+        }
+        else
+        {
+            return false;
+        }
     }
-    return false;
 }
 
 Egl90_can_node::STATUS_CMD Egl90_can_node::getState(Egl90_can_node::CMD command)
@@ -248,6 +268,77 @@ Egl90_can_node::STATUS_CMD Egl90_can_node::getState(Egl90_can_node::CMD command)
     }
     lock.unlock();
     return status;
+}
+
+void Egl90_can_node::fillStrMaps()
+{
+    _cmd_str[CMD_REFERENCE] = "CMD_REFERENCE";
+    _cmd_str[MOVE_POS] = "MOVE_POS";
+    _cmd_str[MOVE_VEL] = "MOVE_VEL";
+    _cmd_str[MOVE_GRIP] = "MOVE_GRIP";
+    _cmd_str[CMD_STOP] = "CMD_STOP";
+    _cmd_str[CMD_INFO] = "CMD_INFO";
+    _cmd_str[CMD_ACK] = "CMD_ACK";
+    _cmd_str[CMD_MOVE_BLOCKED] = "CMD_MOVE_BLOCKED";
+    _cmd_str[CMD_POS_REACHED] = "CMD_POS_REACHED";
+    _cmd_str[CMD_WARNING] = "CMD_WARNING";
+    _cmd_str[CMD_ERROR] = "CMD_ERROR";
+    _cmd_str[GET_STATE] = "GET_STATE";
+    _cmd_str[FRAG_ACK] = "FRAG_ACK";
+    _cmd_str[FRAG_START] = "FRAG_START";
+    _cmd_str[FRAG_MIDDLE] = "FRAG_MIDDLE";
+    _cmd_str[FRAG_END] = "FRAG_END";
+    _cmd_str[REPLY_OK_1] = "REPLY_OK_1";
+    _cmd_str[REPLY_OK_2] = "REPLY_OK_2";
+
+    _status_cmd_str[CMD_NOT_FOUND] = "CMD_NOT_FOUND";
+    _status_cmd_str[PENDING] = "PENDING";
+    _status_cmd_str[RUNNING] = "RUNNING";
+    _status_cmd_str[OK] = "OK";
+    _status_cmd_str[ERROR] = "ERROR";
+
+    _error_str[INFO_BOOT] = "INFO_BOOT";
+    _error_str[INFO_NO_RIGHTS] = "INFO_NO_RIGHTS";
+    _error_str[INFO_UNKNOWN_COMMAND] = "INFO_UNKNOWN_COMMAND";
+    _error_str[INFO_FAILED] = "INFO_FAILED";
+    _error_str[NOT_REFERENCED] = "NOT_REFERENCED";
+    _error_str[INFO_SEARCH_SINE_VECTOR] = "INFO_SEARCH_SINE_VECTOR";
+    _error_str[INFO_NO_ERROR] = "INFO_NO_ERROR";
+    _error_str[INFO_COMMUNICATION_ERROR] = "INFO_COMMUNICATION_ERROR";
+    _error_str[INFO_TIMEOUT] = "INFO_TIMEOUT";
+    _error_str[INFO_UNKNOWN_AXIS_INDEX] = "INFO_UNKNOWN_AXIS_INDEX";
+    _error_str[INFO_WRONG_BAUDRATE] = "INFO_WRONG_BAUDRATE";
+    _error_str[INFO_CHECKSUM] = "INFO_CHECKSUM";
+    _error_str[INFO_MESSAGE_LENGTH] = "INFO_MESSAGE_LENGTH";
+    _error_str[INFO_WRONG_PARAMETER] = "INFO_WRONG_PARAMETER";
+    _error_str[ERROR_TEMP_LOW] = "ERROR_TEMP_LOW";
+    _error_str[ERROR_TEMP_HIGH] = "ERROR_TEMP_HIGH";
+    _error_str[ERROR_LOGIC_LOW] = "ERROR_LOGIC_LOW";
+    _error_str[ERROR_LOGIC_HIGH] = "ERROR_LOGIC_HIGH";
+    _error_str[ERROR_MOTOR_VOLTAGE_LOW] = "ERROR_MOTOR_VOLTAGE_LOW";
+    _error_str[ERROR_MOTOR_VOLTAGE_HIGH] = "ERROR_MOTOR_VOLTAGE_HIGH";
+    _error_str[ERROR_CABLE_BREAK] = "ERROR_CABLE_BREAK";
+    _error_str[ERROR_OVERSHOOT] = "ERROR_OVERSHOOT";
+    _error_str[ERROR_WRONG_RAMP_TYPE] = "ERROR_WRONG_RAMP_TYPE";
+    _error_str[ERROR_CONFIG_MEMORY] = "ERROR_CONFIG_MEMORY";
+    _error_str[ERROR_PROGRAM_MEMORY] = "ERROR_PROGRAM_MEMORY";
+    _error_str[ERROR_INVALIDE_PHRASE] = "ERROR_INVALIDE_PHRASE";
+    _error_str[ERROR_SOFT_LOW] = "ERROR_SOFTLOW";
+    _error_str[ERROR_SOFT_HIGH] = "ERROR_SOFT_HIGH";
+    _error_str[ERROR_SERVICE] = "ERROR_SERVICE";
+    _error_str[ERROR_FAST_STOP] = "ERROR_FAST_STOP";
+    _error_str[ERROR_TOW] = "ERROR_TOW";
+    _error_str[ERROR_VPC3] = "ERROR_VPC3";
+    _error_str[ERROR_FRAGMENTATION] = "ERROR_FRAGMENTATION";
+    _error_str[ERROR_COMMUTATION] = "ERROR_COMMUTATION";
+    _error_str[ERROR_CURRENT] = "ERROR_CURRENT";
+    _error_str[ERROR_I2T] = "ERROR_I2T";
+    _error_str[ERROR_INITIALIZE] = "ERROR_INITIALIZE";
+    _error_str[ERROR_INTERNAL] = "ERROR_INTERNAL";
+    _error_str[ERROR_TOO_FAST] = "ERROR_TOO_FAST";
+    _error_str[ERROR_RESOLVER_CHECK_FAILED] = "ERROR_RESOLVER_CHECK_FAILED";
+    _error_str[ERROR_MATH] = "ERROR_MATH";
+
 }
 
 void Egl90_can_node::timer_cb(const ros::TimerEvent&)
@@ -273,7 +364,7 @@ bool Egl90_can_node::moveToReferencePos(std_srvs::Trigger::Request &req, std_srv
         ros::Duration(0.01).sleep();
         ros::spinOnce();
     }
-    while (_shutdownSignal || !isDone(CMD_REFERENCE, error_flag));
+    while (!_shutdownSignal && !isDone(CMD_REFERENCE, error_flag));
 
     if (error_flag)
     {
@@ -309,7 +400,7 @@ bool Egl90_can_node::acknowledge(std_srvs::Trigger::Request &req, std_srvs::Trig
         ros::Duration(0.01).sleep();
         ros::spinOnce();
     }
-    while (_shutdownSignal || !isDone(CMD_ACK, error_flag));
+    while (!_shutdownSignal && !isDone(CMD_ACK, error_flag));
 
     if (error_flag)
     {
@@ -345,7 +436,7 @@ bool Egl90_can_node::stop(std_srvs::Trigger::Request &req, std_srvs::Trigger::Re
         ros::Duration(0.01).sleep();
         ros::spinOnce();
     }
-    while (_shutdownSignal || !isDone(CMD_STOP, error_flag));
+    while (!_shutdownSignal && !isDone(CMD_STOP, error_flag));
 
     if (error_flag)
     {
@@ -472,7 +563,7 @@ bool Egl90_can_node::movePos(ipa325_egl90_can::MovePos::Request &req, ipa325_egl
         ros::Duration(0.01).sleep();
         ros::spinOnce();
     }
-    while (_shutdownSignal || !isDone(MOVE_POS, error_flag));
+    while (!_shutdownSignal && !isDone(MOVE_POS, error_flag));
 
     if (error_flag)
     {
@@ -529,7 +620,7 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
          ros::Duration(0.01).sleep();
          ros::spinOnce();
      }
-     while (_shutdownSignal || !isDone(MOVE_VEL, error_flag));
+     while (!_shutdownSignal && !isDone(MOVE_VEL, error_flag));
 
      if (error_flag)
      {
@@ -607,11 +698,11 @@ bool Egl90_can_node::isDone(CMD cmd, bool& error_flag)
         switch (_cmd_map[cmd])
         {
             case ERROR:
-                ROS_ERROR("COMMAND responded with an error");
+                ROS_ERROR("COMMAND %s responded with an error", _cmd_str[cmd].c_str());
                 error_flag = true;
                 //TODO
             case OK:
-                ROS_INFO("Command is done with ok");
+                ROS_INFO("Command %s is done with ok", _cmd_str[cmd].c_str());
                 boost::mutex::scoped_lock lock(_mutex);
                 // new creation
                 _cmd_map.erase(cmd);
@@ -622,7 +713,7 @@ bool Egl90_can_node::isDone(CMD cmd, bool& error_flag)
     }
     else
     {
-        ROS_ERROR("Waiting for an answer of a command, which cannot be found!");
+        ROS_ERROR("Waiting for an answer of a command, which cannot be found! %x, %s", cmd, _cmd_str[cmd].c_str());
     }
     return isDone;
 }
