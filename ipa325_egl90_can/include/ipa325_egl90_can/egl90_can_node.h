@@ -10,7 +10,7 @@
 #include "ipa325_egl90_can/MovePos.h"
 #include "ipa325_egl90_can/MoveGrip.h"
 
-//#include <boost/atomic.hpp>
+#include <boost/atomic.hpp>
 #include <boost/thread.hpp>
 
 #include <map>
@@ -140,6 +140,7 @@ private:
     unsigned int _can_id;
     unsigned int _can_module_id;
     unsigned int _can_error_id;
+    unsigned int _timeout_ms;
     std::string _can_socket_id;
 
     boost::mutex _mutex;

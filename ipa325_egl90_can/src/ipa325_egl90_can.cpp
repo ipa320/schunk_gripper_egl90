@@ -31,6 +31,7 @@ Egl90_can_node::Egl90_can_node()
     _can_module_id = 0x0700 + _module_adress; // 0x07 for slave, module id 0xC = 12
     _can_error_id = 0x300 + _module_adress; // 0x03 for warning/error, module id 0xC = 12
     _can_socket_id = "can0"; // name within linux ifconfig
+    _timeout_ms = 5000; //5s
 
 
     if(!_can_driver.init(_can_socket_id, false)) // read own messages: false
@@ -215,11 +216,12 @@ void Egl90_can_node::handleFrame_error(const can::Frame &f)
         }
         break;
     }
-//    ROS_WARN("For now just try acknoledging it!");
-//    std_srvs::Trigger::Request  req;
-//    std_srvs::Trigger::Response res;
-//    acknowledge(req, res);
-//    ros::Duration(0.5).sleep();
+
+    ROS_WARN("For now just try acknoledging it!");
+    std_srvs::Trigger::Request  req;
+    std_srvs::Trigger::Response res;
+    acknowledge(req, res);
+    ros::Duration(0.5).sleep();
 }
 
 bool Egl90_can_node::setState(Egl90_can_node::CMD command, Egl90_can_node::STATUS_CMD status)
@@ -348,7 +350,6 @@ void Egl90_can_node::timer_cb(const ros::TimerEvent&)
 
 bool Egl90_can_node::moveToReferencePos(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res)
 {
-    ROS_INFO("Sending reference message");
     can::Frame txframe = can::Frame(can::MsgHeader(_can_id));
     txframe.data[0] = 0x01;
     txframe.data[1] = CMD_REFERENCE; //CMD Byte
@@ -356,15 +357,22 @@ bool Egl90_can_node::moveToReferencePos(std_srvs::Trigger::Request &req, std_srv
     bool error_flag = false;
 
 //    _can_driver.send(can::toframe("50C#0192"));
-    _can_driver.send(txframe);
     setState(CMD_REFERENCE, PENDING);
 
+    unsigned int counterMs = 0;
     do
     {
-        ros::Duration(0.01).sleep();
-        ros::spinOnce();
+        ROS_INFO("Sending reference message");
+        _can_driver.send(txframe);
+        do
+        {
+            ros::Duration(0.01).sleep();
+            ros::spinOnce();
+            counterMs++;
+        }
+        while (!_shutdownSignal && !isDone(CMD_REFERENCE, error_flag) && counterMs <= _timeout_ms);
     }
-    while (!_shutdownSignal && !isDone(CMD_REFERENCE, error_flag));
+    while (counterMs >= _timeout_ms);
 
     if (error_flag)
     {
@@ -382,7 +390,6 @@ bool Egl90_can_node::moveToReferencePos(std_srvs::Trigger::Request &req, std_srv
 
 bool Egl90_can_node::acknowledge(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res)
 {
-    ROS_INFO("Sending acknowledge message");
     can::Frame txframe = can::Frame(can::MsgHeader(_can_id));
     txframe.data[0] = 1; //DLEN
     txframe.data[1] = CMD_ACK; //CMD Byte
@@ -391,16 +398,23 @@ bool Egl90_can_node::acknowledge(std_srvs::Trigger::Request &req, std_srvs::Trig
     setState(CMD_ACK, PENDING);
 
     //_can_driver.send(can::toframe("50C#018B"));
-    _can_driver.send(txframe);
 
     bool error_flag = false;
 
+    unsigned int counterMs = 0;
     do
     {
-        ros::Duration(0.01).sleep();
-        ros::spinOnce();
+        ROS_INFO("Sending acknowledge message");
+        _can_driver.send(txframe);
+        do
+        {
+            ros::Duration(0.01).sleep();
+            ros::spinOnce();
+            counterMs++;
+        }
+        while (!_shutdownSignal && !isDone(CMD_ACK, error_flag) && counterMs <= _timeout_ms);
     }
-    while (!_shutdownSignal && !isDone(CMD_ACK, error_flag));
+    while (counterMs >= _timeout_ms);
 
     if (error_flag)
     {
@@ -418,7 +432,6 @@ bool Egl90_can_node::acknowledge(std_srvs::Trigger::Request &req, std_srvs::Trig
 bool Egl90_can_node::stop(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res)
 {
 
-    ROS_INFO("Sending stop message");
     can::Frame txframe = can::Frame(can::MsgHeader(_can_id));
     txframe.data[0] = 1; //DLEN
     txframe.data[1] = CMD_STOP; //CMD Byte
@@ -429,14 +442,20 @@ bool Egl90_can_node::stop(std_srvs::Trigger::Request &req, std_srvs::Trigger::Re
     setState(CMD_STOP, PENDING);
 
 //    _can_driver.send(can::toframe("50C#0191"));
-    _can_driver.send(txframe);
-
+    unsigned int counterMs = 0;
     do
     {
-        ros::Duration(0.01).sleep();
-        ros::spinOnce();
+        ROS_INFO("Sending stop message");
+        _can_driver.send(txframe);
+        do
+        {
+            ros::Duration(0.01).sleep();
+            ros::spinOnce();
+            counterMs++;
+        }
+        while (!_shutdownSignal && !isDone(CMD_STOP, error_flag) && counterMs <= _timeout_ms);
     }
-    while (!_shutdownSignal && !isDone(CMD_STOP, error_flag));
+    while (counterMs >= _timeout_ms);
 
     if (error_flag)
     {
@@ -543,7 +562,6 @@ bool Egl90_can_node::movePos(ipa325_egl90_can::MovePos::Request &req, ipa325_egl
     fdata pos;
     pos.f = req.position;
 
-    ROS_INFO("Sending movePos message");
     can::Frame txframe = can::Frame(can::MsgHeader(_can_id));
     txframe.data[0] = 5; //DLEN
     txframe.data[1] = MOVE_POS; //CMD Byte
@@ -556,14 +574,21 @@ bool Egl90_can_node::movePos(ipa325_egl90_can::MovePos::Request &req, ipa325_egl
     bool error_flag = false;
     setState(MOVE_POS, PENDING);
 
-    _can_driver.send(txframe);
 
+    unsigned int counterMs = 0;
     do
     {
-        ros::Duration(0.01).sleep();
-        ros::spinOnce();
+        ROS_INFO("Sending move_pos message");
+        _can_driver.send(txframe);
+        do
+        {
+            ros::Duration(0.01).sleep();
+            ros::spinOnce();
+            counterMs++;
+        }
+        while (!_shutdownSignal && !isDone(MOVE_POS, error_flag) && counterMs <= _timeout_ms);
     }
-    while (!_shutdownSignal && !isDone(MOVE_POS, error_flag));
+    while (counterMs >= _timeout_ms);
 
     if (error_flag)
     {
@@ -588,7 +613,6 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
      vel.f = req.speed;
      cur.f = req.current;
 
-     ROS_INFO("Sending move_vel message");
      can::Frame txframe1 = can::Frame(can::MsgHeader(_can_id));
      can::Frame txframe2 = can::Frame(can::MsgHeader(_can_id));
 
@@ -613,14 +637,21 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
 
      setState(MOVE_VEL, PENDING);
 
-     _can_driver.send(txframe1);
-     _can_driver.send(txframe2);
+     unsigned int counterMs = 0;
      do
      {
-         ros::Duration(0.01).sleep();
-         ros::spinOnce();
+         ROS_INFO("Sending move_vel message");
+         _can_driver.send(txframe1);
+         _can_driver.send(txframe2);
+         do
+         {
+             ros::Duration(0.01).sleep();
+             ros::spinOnce();
+             counterMs++;
+         }
+         while (!_shutdownSignal && !isDone(MOVE_VEL, error_flag) && counterMs <= _timeout_ms);
      }
-     while (!_shutdownSignal && !isDone(MOVE_VEL, error_flag));
+     while (counterMs >= _timeout_ms);
 
      if (error_flag)
      {
