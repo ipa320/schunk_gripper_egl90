@@ -83,7 +83,48 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
             setState(MOVE_VEL, ERROR);
 
             break;
+        case FRAG_START:
+            if (f.data[2] == GET_STATE)
+            {
+                setState(GET_STATE, RUNNING);
+                _tempStatus.c[0] = f.data[3];
+                _tempStatus.c[1] = f.data[4];
+                _tempStatus.c[2] = f.data[5];
+                _tempStatus.c[3] = f.data[6];
+                _tempStatus.c[4] = f.data[7];
+            }
+            break;
+        case FRAG_MIDDLE:
+            if (getState(GET_STATE) == RUNNING)
+            {
+                _tempStatus.c[5] = f.data[2];
+                _tempStatus.c[6] = f.data[3];
+                _tempStatus.c[7] = f.data[4];
+                _tempStatus.c[8] = f.data[5];
+                _tempStatus.c[9] = f.data[6];
+                _tempStatus.c[10] = f.data[7];
+            }
+            break;
+        case FRAG_END:
+            if (getState(GET_STATE) == RUNNING)
+            {
+                _tempStatus.c[11] = f.data[2];
+                _tempStatus.c[12] = f.data[3];
+                _tempStatus.c[13] = f.data[4];
+
+                _tempStatus.status.position *= 0.001;
+                _tempStatus.status.speed *= 0.001;
+
+                boost::mutex::scoped_lock lock(_statusMutex);
+                _status = _tempStatus;
+                lock.unlock();
+
+                setState(GET_STATE, OK);
+                _cond.notify_one();
+            }
+            break;
         }
+
     }
     else
     {
@@ -471,9 +512,8 @@ bool Egl90_can_node::stop(std_srvs::Trigger::Request &req, std_srvs::Trigger::Re
     return true;
 }
 
-statusData Egl90_can_node::updateState()
+void Egl90_can_node::updateState()
 {
-    ROS_INFO("Sending getState message");
     can::Frame txframe = can::Frame(can::MsgHeader(_can_id));
     txframe.data[0] = 1; //DLEN
     txframe.data[1] = GET_STATE; //CMD Byte
@@ -482,60 +522,8 @@ statusData Egl90_can_node::updateState()
     setState(GET_STATE, PENDING);
 
 //    _can_driver.send(can::toframe("50C#0195"));
+    ROS_INFO("Sending getState message");
     _can_driver.send(txframe);
-
-//    struct can_frame txframe, rxframe1, rxframe2, rxframe3;
-
-//    txframe.can_id = _can_id;
-//    txframe.can_dlc = 0x02;
-//    txframe.data[0] = 0x01;
-//    txframe.data[1] = 0x95;//CMD Byte
-
-//    write(_can_socket, &txframe, sizeof(struct can_frame));
-
-//    ros::Duration(0.01).sleep();
-//    // TODO the fragmented CAN message protocol is weird, this will only work if the can is empty besided this module
-//    read(_can_socket, &rxframe1, sizeof(struct can_frame));
-//    read(_can_socket, &rxframe2, sizeof(struct can_frame));
-//    read(_can_socket, &rxframe3, sizeof(struct can_frame));
-
-//    statusData status;
-//    status.c[0] = rxframe1.data[3];
-//    status.c[1] = rxframe1.data[4];
-//    status.c[2] = rxframe1.data[5];
-//    status.c[3] = rxframe1.data[6];
-//    status.c[4] = rxframe1.data[7];
-
-//    status.c[5] = rxframe2.data[2];
-//    status.c[6] = rxframe2.data[3];
-//    status.c[7] = rxframe2.data[4];
-//    status.c[8] = rxframe2.data[5];
-//    status.c[9] = rxframe2.data[6];
-//    status.c[10] = rxframe2.data[7];
-
-//    status.c[11] = rxframe3.data[2];
-//    status.c[12] = rxframe3.data[3];
-//    status.c[13] = rxframe3.data[4];
-
-//    ROS_INFO("Position: %f,\nVelocity: %f,\nCurrent: %f", status.status.position, status.status.speed, status.status.current);
-
-//    ROS_WARN("Status bits may not correct!");
-//    ROS_INFO("IsReferenced: %s,\nIsMoving: %s,\nIsInProgMode: %s\nIsWarning: %s\nIsError: %s\nIsBraked: %s\nisMotionInterrupted: %s\nIsTargetReached: %s\nErrorCode: %X",
-//             (status.status.statusBits >> 0) & 1 ? "True" : "False",
-//             (status.status.statusBits >> 1) & 1 ? "True" : "False",
-//             (status.status.statusBits >> 2) & 1 ? "True" : "False",
-//             (status.status.statusBits >> 3) & 1 ? "True" : "False",
-//             (status.status.statusBits >> 4) & 1 ? "True" : "False",
-//             (status.status.statusBits >> 5) & 1 ? "True" : "False",
-//             (status.status.statusBits >> 6) & 1 ? "True" : "False",
-//             (status.status.statusBits >> 7) & 1 ? "True" : "False",
-//             status.status.errorCode);
-
-    // Convert to meter
-//    status.status.position *= 0.001;
-//    status.status.speed *= 0.001;
-//    _status = status;
-    return _status;
 }
 
 bool Egl90_can_node::getState(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res)
@@ -552,9 +540,12 @@ bool Egl90_can_node::publishState()
     sensor_msgs::JointState js;
     js.header.stamp = ros::Time::now();
     js.name.push_back("egl_position");
+
+    boost::mutex::scoped_lock lock(_statusMutex);
     js.position.push_back(_status.status.position);
     js.velocity.push_back(_status.status.speed);
     js.effort.push_back(_status.status.current);
+    lock.unlock();
     _pub_joint_states.publish(js);
 }
 

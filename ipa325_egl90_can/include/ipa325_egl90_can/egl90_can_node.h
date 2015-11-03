@@ -118,7 +118,7 @@ public:
     Egl90_can_node();
     void spin();
 
-    statusData updateState();
+    void updateState();
 private:
 
     static bool _shutdownSignal;
@@ -155,6 +155,9 @@ private:
 
     ros::Timer _timer;
     statusData _status;
+    statusData _tempStatus;
+    boost::mutex _statusMutex;
+
     /**
      * Callback for receiving signal. When SIGINT was received shutdown everything.
      * @param signal
