@@ -14,6 +14,7 @@
 #include <boost/thread.hpp>
 
 #include <map>
+#include <utility>
 
 //Variables for converting float Data
 union fdata{
@@ -146,7 +147,7 @@ private:
     boost::mutex _mutex;
     boost::condition_variable _cond;
 
-    std::map<CMD, STATUS_CMD> _cmd_map;
+    std::map<CMD, std::pair<int, STATUS_CMD> > _cmd_map;
 
     std::map<CMD, std::string> _cmd_str;
     std::map<STATUS_CMD, std::string> _status_cmd_str;

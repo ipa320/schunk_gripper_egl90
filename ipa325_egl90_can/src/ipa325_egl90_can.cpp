@@ -56,7 +56,7 @@ Egl90_can_node::Egl90_can_node()
 void Egl90_can_node::handleFrame_response(const can::Frame &f)
 {
     ROS_INFO("Received msg CMD=%x, %s", f.data[1], _cmd_str[(CMD)f.data[1]].c_str());
-    std::map<CMD, STATUS_CMD>::iterator search = _cmd_map.find((CMD)f.data[1]);
+    std::map<CMD, std::pair<int, STATUS_CMD> >::iterator search = _cmd_map.find((CMD)f.data[1]);
 
     if(search == _cmd_map.end()) // CMD not found in list, probably a spontanious msg
     {
@@ -87,10 +87,10 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
     }
     else
     {
-        ROS_INFO("Got response %x %x, %s %s", search->first, search->second, _cmd_str[(CMD)search->first].c_str(), _cmd_str[(CMD)search->second].c_str());
+        ROS_INFO("Got response %x %x, %s %s", search->first, search->second.second, _cmd_str[(CMD)search->first].c_str(), _cmd_str[(CMD)search->second.second].c_str());
         if (f.dlc >= 2 && f.data[2] == CMD_ERROR)
         {
-            search->second = ERROR;
+            search->second.second = ERROR;
         }
         else
             {
@@ -100,7 +100,7 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                 if (f.dlc >= 3 && f.data[2] == REPLY_OK_1 && f.data[3] == REPLY_OK_2)
                 {
                     boost::mutex::scoped_lock lock(_mutex);
-                    search->second = OK;
+                    search->second.second = OK;
                     lock.unlock();
                     _cond.notify_one();
                 }
@@ -109,14 +109,14 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                 if (f.dlc >= 3 && f.data[2] == REPLY_OK_1 && f.data[3] == REPLY_OK_2)
                 {
                     boost::mutex::scoped_lock lock(_mutex);
-                    search->second = RUNNING;
+                    search->second.second = RUNNING;
                     lock.unlock();
                     _cond.notify_one();
                 }
                 if (f.dlc >= 2 && f.data[2] == CMD_MOVE_BLOCKED)
                 {
                     boost::mutex::scoped_lock lock(_mutex);
-                    search->second = ERROR;
+                    search->second.second = ERROR;
                     lock.unlock();
                     _cond.notify_one();
                 }
@@ -124,7 +124,7 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                 {
 
                     boost::mutex::scoped_lock lock(_mutex);
-                    search->second = OK;
+                    search->second.second = OK;
                     lock.unlock();
                     _cond.notify_one();
                 }
@@ -134,7 +134,7 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                 {
 
                     boost::mutex::scoped_lock lock(_mutex);
-                    search->second = RUNNING;
+                    search->second.second = RUNNING;
                     lock.unlock();
                     _cond.notify_one();
                 }
@@ -142,7 +142,7 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                 {
 
                     boost::mutex::scoped_lock lock(_mutex);
-                    search->second = OK;
+                    search->second.second = OK;
                     lock.unlock();
                     _cond.notify_one();
                 }
@@ -151,7 +151,7 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                 if (f.dlc >= 3 && f.data[2] == REPLY_OK_1 && f.data[3] == REPLY_OK_2)
                 {
                     boost::mutex::scoped_lock lock(_mutex);
-                    search->second = RUNNING;
+                    search->second.second = RUNNING;
                     lock.unlock();
                     _cond.notify_one();
                 }
@@ -159,14 +159,14 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                 {
 
                     boost::mutex::scoped_lock lock(_mutex);
-                    search->second = ERROR;
+                    search->second.second = ERROR;
                     lock.unlock();
                     _cond.notify_one();
                 }
                 if (f.dlc >= 2 && f.data[2] == CMD_POS_REACHED)
                 {
                     boost::mutex::scoped_lock lock(_mutex);
-                    search->second = OK;
+                    search->second.second = OK;
                     lock.unlock();
                     _cond.notify_one();
                 }
@@ -176,7 +176,7 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                 {
 
                     boost::mutex::scoped_lock lock(_mutex);
-                    search->second = OK;
+                    search->second.second = OK;
                     lock.unlock();
                     _cond.notify_one();
 
@@ -231,31 +231,32 @@ bool Egl90_can_node::setState(Egl90_can_node::CMD command, Egl90_can_node::STATU
 
 bool Egl90_can_node::setState(Egl90_can_node::CMD command, Egl90_can_node::STATUS_CMD status, bool createIfNotFound)
 {
-    if (createIfNotFound)
-    {
-        boost::mutex::scoped_lock lock(_mutex);
-        //instance counter++
-        _cmd_map[command] = status;
-        lock.unlock();
-        _cond.notify_one();
-        return true;
-    }
-    else
-    {
-        if (getState(command) != CMD_NOT_FOUND)
+        if (getState(command) == CMD_NOT_FOUND)
         {
-            boost::mutex::scoped_lock lock(_mutex);
-            // new creation
-            _cmd_map[command] = status;
-            lock.unlock();
-            _cond.notify_one();
-            return true;
+            if (createIfNotFound)
+            {
+                boost::mutex::scoped_lock lock(_mutex);
+                // new creation
+                _cmd_map[command] = std::make_pair(1, status);
+                lock.unlock();
+                _cond.notify_one();
+                return true;
+            }
+            else
+            {
+                return false;
+            }
         }
-        else
+        else // CMD was found
         {
-            return false;
+                boost::mutex::scoped_lock lock(_mutex);
+                //instance counter++
+                _cmd_map[command].first++;
+                lock.unlock();
+                _cond.notify_one();
+                return true;
+
         }
-    }
 }
 
 Egl90_can_node::STATUS_CMD Egl90_can_node::getState(Egl90_can_node::CMD command)
@@ -263,10 +264,10 @@ Egl90_can_node::STATUS_CMD Egl90_can_node::getState(Egl90_can_node::CMD command)
     STATUS_CMD status = CMD_NOT_FOUND;
 
     boost::mutex::scoped_lock lock(_mutex);
-    std::map<CMD, STATUS_CMD>::iterator search = _cmd_map.find(command);
+    std::map<CMD, std::pair<int, STATUS_CMD> >::iterator search = _cmd_map.find(command);
     if (search != _cmd_map.end())
     {
-        status = search->second;
+        status = search->second.second;
     }
     lock.unlock();
     return status;
@@ -726,7 +727,7 @@ bool Egl90_can_node::isDone(CMD cmd, bool& error_flag)
     bool isDone = false;
     if (_cmd_map.count(cmd) == 1)
     {
-        switch (_cmd_map[cmd])
+        switch (_cmd_map[cmd].second)
         {
             case ERROR:
                 ROS_ERROR("COMMAND %s responded with an error", _cmd_str[cmd].c_str());
@@ -735,8 +736,14 @@ bool Egl90_can_node::isDone(CMD cmd, bool& error_flag)
             case OK:
                 ROS_INFO("Command %s is done with ok", _cmd_str[cmd].c_str());
                 boost::mutex::scoped_lock lock(_mutex);
-                // new creation
-                _cmd_map.erase(cmd);
+                if (_cmd_map[cmd].first <= 1)
+                {
+                    _cmd_map.erase(cmd);
+                }
+                else
+                {
+                    _cmd_map[cmd].first--;
+                }
                 lock.unlock();
                 isDone = true;
             break;
