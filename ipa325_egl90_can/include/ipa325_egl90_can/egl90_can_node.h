@@ -131,7 +131,7 @@ private:
     ros::ServiceServer _srv_movePos;
     ros::ServiceServer _srv_moveGrip;
     ros::ServiceServer _srv_stop;
-    ros::ServiceServer _srv_getState;
+    ros::ServiceServer _srv_cleanUp;
 
     can::ThreadedSocketCANInterface _can_driver;
     can::CommInterface::FrameListener::Ptr _respListener;
@@ -174,7 +174,7 @@ private:
     bool stop(std_srvs::Trigger::Request  &req,
                             std_srvs::Trigger::Response &res);
 
-    bool getState(std_srvs::Trigger::Request  &req,
+    bool cleanUp(std_srvs::Trigger::Request  &req,
                             std_srvs::Trigger::Response &res);
 
     bool movePos(ipa325_egl90_can::MovePos::Request  &req,

@@ -20,7 +20,7 @@ Egl90_can_node::Egl90_can_node()
     _srv_reference = _nh.advertiseService(nodename+"/reference_motion", &Egl90_can_node::moveToReferencePos, this);
     _srv_movePos = _nh.advertiseService(nodename+"/move_pos", &Egl90_can_node::movePos, this);
     _srv_moveGrip = _nh.advertiseService(nodename+"/move_grip", &Egl90_can_node::moveGrip, this);
-    _srv_getState = _nh.advertiseService(nodename+"/get_state", &Egl90_can_node::getState, this);
+    _srv_cleanUp = _nh.advertiseService(nodename+"/clean_up", &Egl90_can_node::cleanUp, this);
     _srv_stop = _nh.advertiseService(nodename+"/stop", &Egl90_can_node::stop, this);
 
     _pub_joint_states = _nh.advertise<sensor_msgs::JointState>("joint_states", 1000);
@@ -31,7 +31,7 @@ Egl90_can_node::Egl90_can_node()
     _can_module_id = 0x0700 + _module_adress; // 0x07 for slave, module id 0xC = 12
     _can_error_id = 0x300 + _module_adress; // 0x03 for warning/error, module id 0xC = 12
     _can_socket_id = "can0"; // name within linux ifconfig
-    _timeout_ms = 1000; //1s ??TODO!!
+    _timeout_ms = 1000; //10s ??TODO!!
 
 
     if(!_can_driver.init(_can_socket_id, false)) // read own messages: false
@@ -448,6 +448,11 @@ bool Egl90_can_node::moveToReferencePos(std_srvs::Trigger::Request &req, std_srv
     {
         counterMs = 0;
         ROS_INFO("Sending reference message");
+        if (getState(CMD_REFERENCE) == CMD_NOT_FOUND)
+        {
+            ROS_WARN("State %s was lost and retry had to restore it!", "CMD_REFERENCE");
+            addState(CMD_REFERENCE);
+        }
         _can_driver.send(txframe);
         do
         {
@@ -492,6 +497,11 @@ bool Egl90_can_node::acknowledge(std_srvs::Trigger::Request &req, std_srvs::Trig
     {
         counterMs = 0;
         ROS_INFO("Sending acknowledge message");
+        if (getState(CMD_ACK) == CMD_NOT_FOUND)
+        {
+            ROS_WARN("State %s was lost and retry had to restore it!", "CMD_ACK");
+            addState(CMD_ACK);
+        }
         _can_driver.send(txframe);
         do
         {
@@ -535,6 +545,11 @@ bool Egl90_can_node::stop(std_srvs::Trigger::Request &req, std_srvs::Trigger::Re
     {
         counterMs = 0;
         ROS_INFO("Sending stop message");
+        if (getState(CMD_STOP) == CMD_NOT_FOUND)
+        {
+            ROS_WARN("State %s was lost and retry had to restore it!", "CMD_STOP");
+            addState(CMD_STOP);
+        }
         _can_driver.send(txframe);
         do
         {
@@ -574,12 +589,16 @@ void Egl90_can_node::updateState()
     _can_driver.send(txframe);
 }
 
-bool Egl90_can_node::getState(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res)
+bool Egl90_can_node::cleanUp(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res)
 {
     res.success = true;
     res.message = "ok";
 
-    updateState();
+    ROS_WARN("Stoping the gripper and cleaning up all commands!");
+    stop(req, res);
+    boost::mutex::scoped_lock lock(_mutex);
+    _cmd_map.clear();
+    lock.unlock();
     return true;
 }
 
@@ -620,6 +639,11 @@ bool Egl90_can_node::movePos(ipa325_egl90_can::MovePos::Request &req, ipa325_egl
     {
         counterMs = 0;
         ROS_INFO("Sending move_pos message");
+        if (getState(MOVE_POS) == CMD_NOT_FOUND)
+        {
+            ROS_WARN("State %s was lost and retry had to restore it!", "MOVE_POS");
+            addState(MOVE_POS);
+        }
         _can_driver.send(txframe);
         do
         {
@@ -684,6 +708,11 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
      {
          counterMs = 0;
          ROS_INFO("Sending move_vel message");
+         if (getState(MOVE_VEL) == CMD_NOT_FOUND)
+         {
+             ROS_WARN("State %s was lost and retry had to restore it!", "MOVE_VEL");
+             addState(MOVE_VEL);
+         }
          _can_driver.send(txframe1);
          _can_driver.send(txframe2);
          do
