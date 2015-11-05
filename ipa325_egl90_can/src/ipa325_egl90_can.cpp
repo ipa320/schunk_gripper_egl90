@@ -31,7 +31,7 @@ Egl90_can_node::Egl90_can_node()
     _can_module_id = 0x0700 + _module_adress; // 0x07 for slave, module id 0xC = 12
     _can_error_id = 0x300 + _module_adress; // 0x03 for warning/error, module id 0xC = 12
     _can_socket_id = "can0"; // name within linux ifconfig
-    _timeout_ms = 5000; //5s
+    _timeout_ms = 5000; //5s TODO!!
 
 
     if(!_can_driver.init(_can_socket_id, false)) // read own messages: false
@@ -49,13 +49,13 @@ Egl90_can_node::Egl90_can_node()
      acknowledge(req, res);
      //updateState();
 
-    _timer = _nh.createTimer(ros::Duration(1.0/50.0), &Egl90_can_node::timer_cb, this);
-
+    _timer_update = _nh.createTimer(ros::Duration(1.0/100.0), &Egl90_can_node::update_timer_cb, this);
+    _timer_publish = _nh.createTimer(ros::Duration(1.0/50.0), &Egl90_can_node::publish_timer_cb, this);
 }
 
 void Egl90_can_node::handleFrame_response(const can::Frame &f)
 {
-    ROS_INFO("Received msg CMD=%x, %s", f.data[1], _cmd_str[(CMD)f.data[1]].c_str());
+    ROS_DEBUG("Received msg CMD=%x, %s", f.data[1], _cmd_str[(CMD)f.data[1]].c_str());
     std::map<CMD, std::pair<int, STATUS_CMD> >::iterator search = _cmd_map.find((CMD)f.data[1]);
 
     if(search == _cmd_map.end()) // CMD not found in list, probably a spontanious msg
@@ -65,28 +65,28 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
         case CMD_INFO:
             break;
         case CMD_MOVE_BLOCKED:
-            setState(CMD_REFERENCE, ERROR);
-            setState(MOVE_POS, ERROR);
-            setState(MOVE_VEL, OK);
+            setState(CMD_REFERENCE, ERROR, false);
+            setState(MOVE_POS, ERROR, false);
+            setState(MOVE_VEL, OK, false);
 
             break;
         case CMD_WARNING: //TODO
         case CMD_POS_REACHED:
-            setState(CMD_REFERENCE, OK);
-            setState(MOVE_POS, OK);
-            setState(MOVE_VEL, OK);
+            setState(CMD_REFERENCE, OK, false);
+            setState(MOVE_POS, OK, false);
+            setState(MOVE_VEL, OK, false);
 
             break;
         case CMD_ERROR:
-            setState(CMD_REFERENCE, ERROR);
-            setState(MOVE_POS, ERROR);
-            setState(MOVE_VEL, ERROR);
+            setState(CMD_REFERENCE, ERROR, false);
+            setState(MOVE_POS, ERROR, false);
+            setState(MOVE_VEL, ERROR, false);
 
             break;
         case FRAG_START:
             if (f.data[2] == GET_STATE)
             {
-                setState(GET_STATE, RUNNING);
+                addState(GET_STATE);
                 _tempStatus.c[0] = f.data[3];
                 _tempStatus.c[1] = f.data[4];
                 _tempStatus.c[2] = f.data[5];
@@ -95,7 +95,7 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
             }
             break;
         case FRAG_MIDDLE:
-            if (getState(GET_STATE) == RUNNING)
+            if (getState(GET_STATE) == PENDING)
             {
                 _tempStatus.c[5] = f.data[2];
                 _tempStatus.c[6] = f.data[3];
@@ -106,7 +106,7 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
             }
             break;
         case FRAG_END:
-            if (getState(GET_STATE) == RUNNING)
+            if (getState(GET_STATE) == PENDING)
             {
                 _tempStatus.c[11] = f.data[2];
                 _tempStatus.c[12] = f.data[3];
@@ -119,8 +119,7 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                 _status = _tempStatus;
                 lock.unlock();
 
-                setState(GET_STATE, OK);
-                _cond.notify_one();
+                removeState(GET_STATE);
             }
             break;
         }
@@ -222,9 +221,9 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                     _cond.notify_one();
 
                     // Special case that if stop was called, other motion commands are canceled!
-                    setState(CMD_REFERENCE, ERROR);
-                    setState(MOVE_POS, ERROR);
-                    setState(MOVE_VEL, OK);
+                    setState(CMD_REFERENCE, ERROR, false);
+                    setState(MOVE_POS, ERROR, false);
+                    setState(MOVE_VEL, OK, false);
 
                 }
                 break;
@@ -236,6 +235,7 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
 void Egl90_can_node::handleFrame_error(const can::Frame &f)
 {
     ROS_ERROR("Received error msg: %x %x, %s %s", f.data[1], f.data[2], _error_str[(ERROR_CODE)f.data[1]].c_str(), _error_str[(ERROR_CODE)f.data[2]].c_str());
+    ROS_ERROR("You might have resolve the error and to acknoledge!");
     // TODO!!!
     switch(f.data[1])
     {
@@ -247,6 +247,9 @@ void Egl90_can_node::handleFrame_error(const can::Frame &f)
         // Check for softstop and may put MOVE_VEL to ok
         switch(f.data[2])
         {
+            case ERROR_MOTOR_VOLTAGE_LOW:
+                ROS_WARN("Probably the safety circuit is not closed!");
+                break;
             case ERROR_SOFT_LOW:
             case ERROR_SOFT_HIGH:
                 setState(MOVE_VEL, OK, false);
@@ -258,11 +261,14 @@ void Egl90_can_node::handleFrame_error(const can::Frame &f)
         break;
     }
 
-    ROS_WARN("For now just try acknoledging it!");
-    std_srvs::Trigger::Request  req;
-    std_srvs::Trigger::Response res;
-    acknowledge(req, res);
-    ros::Duration(0.5).sleep();
+//    ROS_WARN("For now just try acknoledging it!");
+//    std_srvs::Trigger::Request  req;
+//    std_srvs::Trigger::Response res;
+//    acknowledge(req, res);
+//    std_srvs::Trigger::Request  req;
+//    std_srvs::Trigger::Response res;
+//    acknowledge(req, res);
+//    ros::Duration(0.5).sleep();
 }
 
 bool Egl90_can_node::setState(Egl90_can_node::CMD command, Egl90_can_node::STATUS_CMD status)
@@ -270,34 +276,65 @@ bool Egl90_can_node::setState(Egl90_can_node::CMD command, Egl90_can_node::STATU
     return setState(command, status, true);
 }
 
-bool Egl90_can_node::setState(Egl90_can_node::CMD command, Egl90_can_node::STATUS_CMD status, bool createIfNotFound)
+bool Egl90_can_node::setState(Egl90_can_node::CMD command, Egl90_can_node::STATUS_CMD status, bool warn)
 {
-        if (getState(command) == CMD_NOT_FOUND)
-        {
-            if (createIfNotFound)
-            {
-                boost::mutex::scoped_lock lock(_mutex);
-                // new creation
-                _cmd_map[command] = std::make_pair(1, status);
-                lock.unlock();
-                _cond.notify_one();
-                return true;
-            }
-            else
-            {
-                return false;
-            }
-        }
-        else // CMD was found
-        {
-                boost::mutex::scoped_lock lock(_mutex);
-                //instance counter++
-                _cmd_map[command].first++;
-                lock.unlock();
-                _cond.notify_one();
-                return true;
+    if (getState(command) == CMD_NOT_FOUND)
+    {
+        ROS_ERROR_COND(warn, "Command %s changes status to %s ,but was not assigned before!", _cmd_str[command].c_str(), _status_cmd_str[status].c_str());
+        return false;
+    }
+    else // CMD was found
+    {
+            boost::mutex::scoped_lock lock(_mutex);
+            _cmd_map[command].second = status;
+            lock.unlock();
+            _cond.notify_one();
+            return true;
+    }
+}
 
-        }
+bool Egl90_can_node::addState(Egl90_can_node::CMD command)
+{
+    return addState(command, PENDING);
+}
+
+bool Egl90_can_node::addState(Egl90_can_node::CMD command, Egl90_can_node::STATUS_CMD status)
+{
+    if (getState(command) == CMD_NOT_FOUND)
+    {
+        boost::mutex::scoped_lock lock(_mutex);
+        // new creation
+        _cmd_map[command] = std::make_pair(1, status);
+        lock.unlock();
+        _cond.notify_one();
+    }
+    else
+    {
+        boost::mutex::scoped_lock lock(_mutex);
+        // instance counter++
+        _cmd_map[command].first++;
+        _cmd_map[command].second = status;
+        lock.unlock();
+        _cond.notify_one();
+    }
+    return true;
+}
+
+bool Egl90_can_node::removeState(Egl90_can_node::CMD command)
+{
+    bool hasBeenErased = true;
+    boost::mutex::scoped_lock lock(_mutex);
+    if (_cmd_map[command].first <= 1)
+    {
+        _cmd_map.erase(command);
+    }
+    else
+    {
+        _cmd_map[command].first--;
+        hasBeenErased = false;
+    }
+    lock.unlock();
+    return hasBeenErased;
 }
 
 Egl90_can_node::STATUS_CMD Egl90_can_node::getState(Egl90_can_node::CMD command)
@@ -385,7 +422,12 @@ void Egl90_can_node::fillStrMaps()
 
 }
 
-void Egl90_can_node::timer_cb(const ros::TimerEvent&)
+void Egl90_can_node::update_timer_cb(const ros::TimerEvent&)
+{
+    updateState();
+}
+
+void Egl90_can_node::publish_timer_cb(const ros::TimerEvent &)
 {
     publishState();
 }
@@ -399,22 +441,24 @@ bool Egl90_can_node::moveToReferencePos(std_srvs::Trigger::Request &req, std_srv
     bool error_flag = false;
 
 //    _can_driver.send(can::toframe("50C#0192"));
-    setState(CMD_REFERENCE, PENDING);
+    addState(CMD_REFERENCE, PENDING);
 
     unsigned int counterMs = 0;
     do
     {
+        counterMs = 0;
         ROS_INFO("Sending reference message");
         _can_driver.send(txframe);
         do
         {
-            ros::Duration(0.01).sleep();
+            ros::Duration(0.1).sleep();
             ros::spinOnce();
             counterMs++;
+            ROS_DEBUG("Counter %s %d", "CMD_REFERENCE", counterMs);
         }
         while (!_shutdownSignal && !isDone(CMD_REFERENCE, error_flag) && counterMs <= _timeout_ms);
     }
-    while (counterMs >= _timeout_ms);
+    while (counterMs > _timeout_ms);
 
     if (error_flag)
     {
@@ -437,7 +481,7 @@ bool Egl90_can_node::acknowledge(std_srvs::Trigger::Request &req, std_srvs::Trig
     txframe.data[1] = CMD_ACK; //CMD Byte
     txframe.dlc = 2;
 
-    setState(CMD_ACK, PENDING);
+    addState(CMD_ACK, PENDING);
 
     //_can_driver.send(can::toframe("50C#018B"));
 
@@ -446,17 +490,19 @@ bool Egl90_can_node::acknowledge(std_srvs::Trigger::Request &req, std_srvs::Trig
     unsigned int counterMs = 0;
     do
     {
+        counterMs = 0;
         ROS_INFO("Sending acknowledge message");
         _can_driver.send(txframe);
         do
         {
-            ros::Duration(0.01).sleep();
+            ros::Duration(0.1).sleep();
             ros::spinOnce();
             counterMs++;
+            ROS_DEBUG("Counter %s %d", "CMD_ACK", counterMs);
         }
         while (!_shutdownSignal && !isDone(CMD_ACK, error_flag) && counterMs <= _timeout_ms);
     }
-    while (counterMs >= _timeout_ms);
+    while (counterMs > _timeout_ms);
 
     if (error_flag)
     {
@@ -481,23 +527,25 @@ bool Egl90_can_node::stop(std_srvs::Trigger::Request &req, std_srvs::Trigger::Re
 
     bool error_flag = false;
 
-    setState(CMD_STOP, PENDING);
+    addState(CMD_STOP, PENDING);
 
 //    _can_driver.send(can::toframe("50C#0191"));
     unsigned int counterMs = 0;
     do
     {
+        counterMs = 0;
         ROS_INFO("Sending stop message");
         _can_driver.send(txframe);
         do
         {
-            ros::Duration(0.01).sleep();
+            ros::Duration(0.1).sleep();
             ros::spinOnce();
             counterMs++;
+            ROS_DEBUG("Counter %s %d", "CMD_STOP", counterMs);
         }
         while (!_shutdownSignal && !isDone(CMD_STOP, error_flag) && counterMs <= _timeout_ms);
     }
-    while (counterMs >= _timeout_ms);
+    while (counterMs > _timeout_ms);
 
     if (error_flag)
     {
@@ -519,10 +567,10 @@ void Egl90_can_node::updateState()
     txframe.data[1] = GET_STATE; //CMD Byte
     txframe.dlc = 2;
 
-    setState(GET_STATE, PENDING);
+    addState(GET_STATE, PENDING);
 
 //    _can_driver.send(can::toframe("50C#0195"));
-    ROS_INFO("Sending getState message");
+    ROS_DEBUG("Sending getState message");
     _can_driver.send(txframe);
 }
 
@@ -564,23 +612,25 @@ bool Egl90_can_node::movePos(ipa325_egl90_can::MovePos::Request &req, ipa325_egl
     txframe.dlc = 6;
 
     bool error_flag = false;
-    setState(MOVE_POS, PENDING);
+    addState(MOVE_POS, PENDING);
 
 
     unsigned int counterMs = 0;
     do
     {
+        counterMs = 0;
         ROS_INFO("Sending move_pos message");
         _can_driver.send(txframe);
         do
         {
-            ros::Duration(0.01).sleep();
+            ros::Duration(0.1).sleep();
             ros::spinOnce();
-            counterMs++;
+            counterMs+=10;
+            ROS_DEBUG("Counter %s %d", "MOVE_POS", counterMs);
         }
         while (!_shutdownSignal && !isDone(MOVE_POS, error_flag) && counterMs <= _timeout_ms);
     }
-    while (counterMs >= _timeout_ms);
+    while (counterMs > _timeout_ms);
 
     if (error_flag)
     {
@@ -627,23 +677,25 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
 
      bool error_flag = false;
 
-     setState(MOVE_VEL, PENDING);
+     addState(MOVE_VEL, PENDING);
 
      unsigned int counterMs = 0;
      do
      {
+         counterMs = 0;
          ROS_INFO("Sending move_vel message");
          _can_driver.send(txframe1);
          _can_driver.send(txframe2);
          do
          {
-             ros::Duration(0.01).sleep();
+             ros::Duration(0.1).sleep();
              ros::spinOnce();
              counterMs++;
+            ROS_DEBUG("Counter %s %d", "MOVE_VEL", counterMs);
          }
          while (!_shutdownSignal && !isDone(MOVE_VEL, error_flag) && counterMs <= _timeout_ms);
      }
-     while (counterMs >= _timeout_ms);
+     while (counterMs > _timeout_ms);
 
      if (error_flag)
      {
@@ -677,7 +729,7 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
      write(_can_socket, &txframe, sizeof(struct can_frame));
      do
      {
-         ros::Duration(0.01).sleep();
+         ros::Duration(0.1).sleep();
          read(_can_socket, &rxframe, sizeof(struct can_frame));
      } while (!isCanAnswer(0xB7, rxframe, error_flag) || _shutdownSignal);
 
@@ -690,7 +742,7 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
      {
          do // wait for position reached signal
          {
-             ros::Duration(0.01).sleep();
+             ros::Duration(0.1).sleep();
              read(_can_socket, &rxframe, sizeof(struct can_frame));
          } while ((rxframe.can_dlc < 2 && rxframe.data[2] != 0x93) || _shutdownSignal); // 0x93 is CMD_MOVE_BLOCKED
 
@@ -724,18 +776,11 @@ bool Egl90_can_node::isDone(CMD cmd, bool& error_flag)
                 ROS_ERROR("COMMAND %s responded with an error", _cmd_str[cmd].c_str());
                 error_flag = true;
                 //TODO
+                removeState(cmd);
+                isDone = true;
             case OK:
                 ROS_INFO("Command %s is done with ok", _cmd_str[cmd].c_str());
-                boost::mutex::scoped_lock lock(_mutex);
-                if (_cmd_map[cmd].first <= 1)
-                {
-                    _cmd_map.erase(cmd);
-                }
-                else
-                {
-                    _cmd_map[cmd].first--;
-                }
-                lock.unlock();
+                removeState(cmd);
                 isDone = true;
             break;
         }

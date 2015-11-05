@@ -153,7 +153,8 @@ private:
     std::map<STATUS_CMD, std::string> _status_cmd_str;
     std::map<ERROR_CODE, std::string> _error_str;
 
-    ros::Timer _timer;
+    ros::Timer _timer_update;
+    ros::Timer _timer_publish;
     statusData _status;
     statusData _tempStatus;
     boost::mutex _statusMutex;
@@ -185,14 +186,19 @@ private:
     bool isDone(CMD cmd, bool& error_flag);
 
     bool publishState();
-    void timer_cb(const ros::TimerEvent &);
+    void update_timer_cb(const ros::TimerEvent &);
+    void publish_timer_cb(const ros::TimerEvent &);
 
     void handleFrame_response(const can::Frame &f);
     void handleFrame_error(const can::Frame &f);
 
     bool setState(CMD command, STATUS_CMD status);
-    bool setState(CMD command, STATUS_CMD status, bool createIfNotFound);
+    bool setState(CMD command, STATUS_CMD status, bool warn);
     STATUS_CMD getState(CMD command);
+    bool addState(Egl90_can_node::CMD command);
+    bool addState(Egl90_can_node::CMD command, Egl90_can_node::STATUS_CMD status);
+    bool removeState(Egl90_can_node::CMD command);
+
     void fillStrMaps();
 };
 
