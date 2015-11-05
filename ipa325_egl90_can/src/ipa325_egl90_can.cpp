@@ -31,7 +31,7 @@ Egl90_can_node::Egl90_can_node()
     _can_module_id = 0x0700 + _module_adress; // 0x07 for slave, module id 0xC = 12
     _can_error_id = 0x300 + _module_adress; // 0x03 for warning/error, module id 0xC = 12
     _can_socket_id = "can0"; // name within linux ifconfig
-    _timeout_ms = 5000; //5s TODO!!
+    _timeout_ms = 1000; //1s ??TODO!!
 
 
     if(!_can_driver.init(_can_socket_id, false)) // read own messages: false
@@ -453,12 +453,12 @@ bool Egl90_can_node::moveToReferencePos(std_srvs::Trigger::Request &req, std_srv
         {
             ros::Duration(0.1).sleep();
             ros::spinOnce();
-            counterMs++;
+            counterMs+=10;
             ROS_DEBUG("Counter %s %d", "CMD_REFERENCE", counterMs);
         }
-        while (!_shutdownSignal && !isDone(CMD_REFERENCE, error_flag) && counterMs <= _timeout_ms);
+        while (!_shutdownSignal && !isDone(CMD_REFERENCE, error_flag) && counterMs <= 5*_timeout_ms);
     }
-    while (counterMs > _timeout_ms);
+    while (counterMs > 5*_timeout_ms);
 
     if (error_flag)
     {
@@ -497,7 +497,7 @@ bool Egl90_can_node::acknowledge(std_srvs::Trigger::Request &req, std_srvs::Trig
         {
             ros::Duration(0.1).sleep();
             ros::spinOnce();
-            counterMs++;
+            counterMs+=10;
             ROS_DEBUG("Counter %s %d", "CMD_ACK", counterMs);
         }
         while (!_shutdownSignal && !isDone(CMD_ACK, error_flag) && counterMs <= _timeout_ms);
@@ -540,7 +540,7 @@ bool Egl90_can_node::stop(std_srvs::Trigger::Request &req, std_srvs::Trigger::Re
         {
             ros::Duration(0.1).sleep();
             ros::spinOnce();
-            counterMs++;
+            counterMs+=10;
             ROS_DEBUG("Counter %s %d", "CMD_STOP", counterMs);
         }
         while (!_shutdownSignal && !isDone(CMD_STOP, error_flag) && counterMs <= _timeout_ms);
@@ -690,7 +690,7 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
          {
              ros::Duration(0.1).sleep();
              ros::spinOnce();
-             counterMs++;
+             counterMs+=10;
             ROS_DEBUG("Counter %s %d", "MOVE_VEL", counterMs);
          }
          while (!_shutdownSignal && !isDone(MOVE_VEL, error_flag) && counterMs <= _timeout_ms);
