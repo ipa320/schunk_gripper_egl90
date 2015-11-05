@@ -265,9 +265,10 @@ void Egl90_can_node::handleFrame_error(const can::Frame &f)
 //    std_srvs::Trigger::Request  req;
 //    std_srvs::Trigger::Response res;
 //    acknowledge(req, res);
-//    std_srvs::Trigger::Request  req;
-//    std_srvs::Trigger::Response res;
-//    acknowledge(req, res);
+
+/*       std_srvs::Trigger::Request  req;
+       std_srvs::Trigger::Response res;
+       stop(req, res);*/
 //    ros::Duration(0.5).sleep();
 }
 
@@ -817,6 +818,8 @@ bool Egl90_can_node::isDone(CMD cmd, bool& error_flag)
     else
     {
         ROS_ERROR("Waiting for an answer of a command, which cannot be found! %x, %s", cmd, _cmd_str[cmd].c_str());
+        ROS_WARN("State %s was lost and retry had to restore it!", _cmd_str[cmd].c_str());
+        addState(cmd, RUNNING);
     }
     return isDone;
 }
