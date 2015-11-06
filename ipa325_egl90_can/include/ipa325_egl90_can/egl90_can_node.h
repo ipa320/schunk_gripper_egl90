@@ -145,6 +145,7 @@ private:
     std::string _can_socket_id;
 
     boost::mutex _mutex;
+    boost::mutex _condition_mutex;
     boost::condition_variable _cond;
 
     std::map<CMD, std::pair<int, STATUS_CMD> > _cmd_map;

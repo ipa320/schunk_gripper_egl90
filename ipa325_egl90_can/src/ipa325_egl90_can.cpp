@@ -31,7 +31,7 @@ Egl90_can_node::Egl90_can_node()
     _can_module_id = 0x0700 + _module_adress; // 0x07 for slave, module id 0xC = 12
     _can_error_id = 0x300 + _module_adress; // 0x03 for warning/error, module id 0xC = 12
     _can_socket_id = "can0"; // name within linux ifconfig
-    _timeout_ms = 1000; //10s ??TODO!!
+    _timeout_ms = 10000; //10s ??TODO!!
 
 
     if(!_can_driver.init(_can_socket_id, false)) // read own messages: false
@@ -49,8 +49,8 @@ Egl90_can_node::Egl90_can_node()
      acknowledge(req, res);
      //updateState();
 
-    _timer_update = _nh.createTimer(ros::Duration(1.0/100.0), &Egl90_can_node::update_timer_cb, this);
-    _timer_publish = _nh.createTimer(ros::Duration(1.0/50.0), &Egl90_can_node::publish_timer_cb, this);
+    //_timer_update = _nh.createTimer(ros::Duration(1.0/100.0), &Egl90_can_node::update_timer_cb, this);
+    //_timer_publish = _nh.createTimer(ros::Duration(1.0/50.0), &Egl90_can_node::publish_timer_cb, this);
 }
 
 void Egl90_can_node::handleFrame_response(const can::Frame &f)
@@ -142,7 +142,7 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                     boost::mutex::scoped_lock lock(_mutex);
                     search->second.second = OK;
                     lock.unlock();
-                    _cond.notify_one();
+                    _cond.notify_all();
                 }
                 break;
             case CMD_REFERENCE:
@@ -151,14 +151,14 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                     boost::mutex::scoped_lock lock(_mutex);
                     search->second.second = RUNNING;
                     lock.unlock();
-                    _cond.notify_one();
+                    _cond.notify_all();
                 }
                 if (f.dlc >= 2 && f.data[2] == CMD_MOVE_BLOCKED)
                 {
                     boost::mutex::scoped_lock lock(_mutex);
                     search->second.second = ERROR;
                     lock.unlock();
-                    _cond.notify_one();
+                    _cond.notify_all();
                 }
                 if (f.dlc >= 2 && f.data[2] == CMD_POS_REACHED)
                 {
@@ -166,7 +166,7 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                     boost::mutex::scoped_lock lock(_mutex);
                     search->second.second = OK;
                     lock.unlock();
-                    _cond.notify_one();
+                    _cond.notify_all();
                 }
                 break;
             case MOVE_VEL:
@@ -176,7 +176,7 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                     boost::mutex::scoped_lock lock(_mutex);
                     search->second.second = RUNNING;
                     lock.unlock();
-                    _cond.notify_one();
+                    _cond.notify_all();
                 }
                 if (f.dlc >= 2 && f.data[2] == CMD_MOVE_BLOCKED)
                 {
@@ -184,7 +184,7 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                     boost::mutex::scoped_lock lock(_mutex);
                     search->second.second = OK;
                     lock.unlock();
-                    _cond.notify_one();
+                    _cond.notify_all();
                 }
                 break;
             case MOVE_POS:
@@ -193,7 +193,7 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                     boost::mutex::scoped_lock lock(_mutex);
                     search->second.second = RUNNING;
                     lock.unlock();
-                    _cond.notify_one();
+                    _cond.notify_all();
                 }
                 if (f.dlc >= 2 && f.data[2] == CMD_MOVE_BLOCKED)
                 {
@@ -201,14 +201,14 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                     boost::mutex::scoped_lock lock(_mutex);
                     search->second.second = ERROR;
                     lock.unlock();
-                    _cond.notify_one();
+                    _cond.notify_all();
                 }
                 if (f.dlc >= 2 && f.data[2] == CMD_POS_REACHED)
                 {
                     boost::mutex::scoped_lock lock(_mutex);
                     search->second.second = OK;
                     lock.unlock();
-                    _cond.notify_one();
+                    _cond.notify_all();
                 }
                 break;
             case CMD_STOP:
@@ -218,7 +218,7 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                     boost::mutex::scoped_lock lock(_mutex);
                     search->second.second = OK;
                     lock.unlock();
-                    _cond.notify_one();
+                    _cond.notify_all();
 
                     // Special case that if stop was called, other motion commands are canceled!
                     setState(CMD_REFERENCE, ERROR, false);
@@ -289,7 +289,7 @@ bool Egl90_can_node::setState(Egl90_can_node::CMD command, Egl90_can_node::STATU
             boost::mutex::scoped_lock lock(_mutex);
             _cmd_map[command].second = status;
             lock.unlock();
-            _cond.notify_one();
+            _cond.notify_all();
             return true;
     }
 }
@@ -307,7 +307,7 @@ bool Egl90_can_node::addState(Egl90_can_node::CMD command, Egl90_can_node::STATU
         // new creation
         _cmd_map[command] = std::make_pair(1, status);
         lock.unlock();
-        _cond.notify_one();
+        _cond.notify_all();
     }
     else
     {
@@ -316,7 +316,7 @@ bool Egl90_can_node::addState(Egl90_can_node::CMD command, Egl90_can_node::STATU
         _cmd_map[command].first++;
         _cmd_map[command].second = status;
         lock.unlock();
-        _cond.notify_one();
+        _cond.notify_all();
     }
     return true;
 }
@@ -335,6 +335,7 @@ bool Egl90_can_node::removeState(Egl90_can_node::CMD command)
         hasBeenErased = false;
     }
     lock.unlock();
+    _cond.notify_all();
     return hasBeenErased;
 }
 
@@ -704,7 +705,7 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
 
      addState(MOVE_VEL, PENDING);
 
-     bool hasTimeOut = true;
+     bool hasNoTimeout = false;
      do
      {
          ROS_INFO("Sending move_vel message");
@@ -716,19 +717,17 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
          _can_driver.send(txframe1);
          _can_driver.send(txframe2);
 
-         boost::system_time const timeout = boost::get_system_time()+boost::posix_time::millisec(_timeout_ms);
-         boost::mutex::scoped_lock lock(_mutex);
+         boost::system_time const timeout=boost::get_system_time()+ boost::posix_time::milliseconds(_timeout_ms);
+         boost::mutex::scoped_lock lock(_condition_mutex);
          do
          {
-             hasTimeOut = _cond.timed_wait(lock, timeout);
-             //ros::Duration(0.1).sleep();
-             //ros::spinOnce();
-             //counterMs+=10;
-            //ROS_DEBUG("Counter %s %d", "MOVE_VEL", counterMs);
+            hasNoTimeout = _cond.timed_wait(lock, timeout);
+            ROS_DEBUG("Wakeup Timeout:%d", !hasNoTimeout);
          }
-         while (!_shutdownSignal && !isDone(MOVE_VEL, error_flag));
+         while (!_shutdownSignal && !isDone(MOVE_VEL, error_flag) && hasNoTimeout);
+         ROS_DEBUG("Wakeup and ok or timeout");
      }
-     while (hasTimeOut);
+     while (!hasNoTimeout);
 
      if (error_flag)
      {
