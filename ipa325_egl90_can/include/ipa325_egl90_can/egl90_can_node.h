@@ -187,8 +187,6 @@ private:
     bool isDone(CMD cmd, bool& error_flag);
 
     bool publishState();
-    void update_timer_cb(const ros::TimerEvent &);
-    void publish_timer_cb(const ros::TimerEvent &);
 
     void handleFrame_response(const can::Frame &f);
     void handleFrame_error(const can::Frame &f);

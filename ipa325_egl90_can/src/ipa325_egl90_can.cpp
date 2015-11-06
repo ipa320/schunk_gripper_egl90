@@ -31,7 +31,7 @@ Egl90_can_node::Egl90_can_node()
     _can_module_id = 0x0700 + _module_adress; // 0x07 for slave, module id 0xC = 12
     _can_error_id = 0x300 + _module_adress; // 0x03 for warning/error, module id 0xC = 12
     _can_socket_id = "can0"; // name within linux ifconfig
-    _timeout_ms = 10000; //10s ??TODO!!
+    _timeout_ms = 5000; //5s ??TODO!!
 
 
     if(!_can_driver.init(_can_socket_id, false)) // read own messages: false
@@ -47,10 +47,7 @@ Egl90_can_node::Egl90_can_node()
      std_srvs::Trigger::Request  req;
      std_srvs::Trigger::Response res;
      acknowledge(req, res);
-     //updateState();
-
-    //_timer_update = _nh.createTimer(ros::Duration(1.0/100.0), &Egl90_can_node::update_timer_cb, this);
-    //_timer_publish = _nh.createTimer(ros::Duration(1.0/50.0), &Egl90_can_node::publish_timer_cb, this);
+     updateState();
 }
 
 void Egl90_can_node::handleFrame_response(const can::Frame &f)
@@ -118,7 +115,7 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                 boost::mutex::scoped_lock lock(_statusMutex);
                 _status = _tempStatus;
                 lock.unlock();
-
+                publishState();
                 removeState(GET_STATE);
             }
             break;
@@ -151,7 +148,7 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                     boost::mutex::scoped_lock lock(_mutex);
                     search->second.second = RUNNING;
                     lock.unlock();
-                    _cond.notify_all();
+                    //_cond.notify_all();
                 }
                 if (f.dlc >= 2 && f.data[2] == CMD_MOVE_BLOCKED)
                 {
@@ -176,7 +173,7 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                     boost::mutex::scoped_lock lock(_mutex);
                     search->second.second = RUNNING;
                     lock.unlock();
-                    _cond.notify_all();
+                    //_cond.notify_all();
                 }
                 if (f.dlc >= 2 && f.data[2] == CMD_MOVE_BLOCKED)
                 {
@@ -193,7 +190,7 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                     boost::mutex::scoped_lock lock(_mutex);
                     search->second.second = RUNNING;
                     lock.unlock();
-                    _cond.notify_all();
+                    //_cond.notify_all();
                 }
                 if (f.dlc >= 2 && f.data[2] == CMD_MOVE_BLOCKED)
                 {
@@ -307,7 +304,7 @@ bool Egl90_can_node::addState(Egl90_can_node::CMD command, Egl90_can_node::STATU
         // new creation
         _cmd_map[command] = std::make_pair(1, status);
         lock.unlock();
-        _cond.notify_all();
+        //_cond.notify_all();
     }
     else
     {
@@ -316,7 +313,7 @@ bool Egl90_can_node::addState(Egl90_can_node::CMD command, Egl90_can_node::STATU
         _cmd_map[command].first++;
         _cmd_map[command].second = status;
         lock.unlock();
-        _cond.notify_all();
+        //_cond.notify_all();
     }
     return true;
 }
@@ -424,16 +421,6 @@ void Egl90_can_node::fillStrMaps()
 
 }
 
-void Egl90_can_node::update_timer_cb(const ros::TimerEvent&)
-{
-    updateState();
-}
-
-void Egl90_can_node::publish_timer_cb(const ros::TimerEvent &)
-{
-    publishState();
-}
-
 bool Egl90_can_node::moveToReferencePos(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res)
 {
     can::Frame txframe = can::Frame(can::MsgHeader(_can_id));
@@ -441,31 +428,30 @@ bool Egl90_can_node::moveToReferencePos(std_srvs::Trigger::Request &req, std_srv
     txframe.data[1] = CMD_REFERENCE; //CMD Byte
     txframe.dlc = 2;
     bool error_flag = false;
-
+    bool hasNoTimeout = false;
 //    _can_driver.send(can::toframe("50C#0192"));
     addState(CMD_REFERENCE, PENDING);
-
-    unsigned int counterMs = 0;
     do
     {
-        counterMs = 0;
-        ROS_INFO("Sending reference message");
+        ROS_INFO("Sending CMD_REFERENCE message");
         if (getState(CMD_REFERENCE) == CMD_NOT_FOUND)
         {
-            ROS_WARN("State %s was lost and retry had to restore it!", "CMD_REFERENCE");
+            ROS_WARN("State %s was lost and retry had to restore it!", "MOVE_POS");
             addState(CMD_REFERENCE);
         }
         _can_driver.send(txframe);
+
+        boost::system_time const timeout=boost::get_system_time()+ boost::posix_time::milliseconds(_timeout_ms);
+        boost::mutex::scoped_lock lock(_condition_mutex);
         do
         {
-            ros::Duration(0.1).sleep();
-            ros::spinOnce();
-            counterMs+=10;
-            ROS_DEBUG("Counter %s %d", "CMD_REFERENCE", counterMs);
+           hasNoTimeout = _cond.timed_wait(lock, timeout);
+           ROS_DEBUG("Wakeup Timeout:%d", !hasNoTimeout);
         }
-        while (!_shutdownSignal && !isDone(CMD_REFERENCE, error_flag) && counterMs <= 5*_timeout_ms);
+        while (!_shutdownSignal && !isDone(CMD_REFERENCE, error_flag) && hasNoTimeout);
+        ROS_DEBUG("Wakeup and ok or timeout");
     }
-    while (counterMs > 5*_timeout_ms);
+    while (!hasNoTimeout);
 
     if (error_flag)
     {
@@ -493,28 +479,28 @@ bool Egl90_can_node::acknowledge(std_srvs::Trigger::Request &req, std_srvs::Trig
     //_can_driver.send(can::toframe("50C#018B"));
 
     bool error_flag = false;
-
-    unsigned int counterMs = 0;
+    bool hasNoTimeout = false;
     do
     {
-        counterMs = 0;
-        ROS_INFO("Sending acknowledge message");
+        ROS_INFO("Sending CMD_ACK message");
         if (getState(CMD_ACK) == CMD_NOT_FOUND)
         {
-            ROS_WARN("State %s was lost and retry had to restore it!", "CMD_ACK");
+            ROS_WARN("State %s was lost and retry had to restore it!", "MOVE_POS");
             addState(CMD_ACK);
         }
         _can_driver.send(txframe);
+
+        boost::system_time const timeout=boost::get_system_time()+ boost::posix_time::milliseconds(_timeout_ms);
+        boost::mutex::scoped_lock lock(_condition_mutex);
         do
         {
-            ros::Duration(0.1).sleep();
-            ros::spinOnce();
-            counterMs+=10;
-            ROS_DEBUG("Counter %s %d", "CMD_ACK", counterMs);
+           hasNoTimeout = _cond.timed_wait(lock, timeout);
+           ROS_DEBUG("Wakeup Timeout:%d", !hasNoTimeout);
         }
-        while (!_shutdownSignal && !isDone(CMD_ACK, error_flag) && counterMs <= _timeout_ms);
+        while (!_shutdownSignal && !isDone(CMD_ACK, error_flag) && hasNoTimeout);
+        ROS_DEBUG("Wakeup and ok or timeout");
     }
-    while (counterMs > _timeout_ms);
+    while (!hasNoTimeout);
 
     if (error_flag)
     {
@@ -542,27 +528,28 @@ bool Egl90_can_node::stop(std_srvs::Trigger::Request &req, std_srvs::Trigger::Re
     addState(CMD_STOP, PENDING);
 
 //    _can_driver.send(can::toframe("50C#0191"));
-    unsigned int counterMs = 0;
+    bool hasNoTimeout = false;
     do
     {
-        counterMs = 0;
-        ROS_INFO("Sending stop message");
+        ROS_INFO("Sending CMD_STOP message");
         if (getState(CMD_STOP) == CMD_NOT_FOUND)
         {
-            ROS_WARN("State %s was lost and retry had to restore it!", "CMD_STOP");
+            ROS_WARN("State %s was lost and retry had to restore it!", "MOVE_POS");
             addState(CMD_STOP);
         }
         _can_driver.send(txframe);
+
+        boost::system_time const timeout=boost::get_system_time()+ boost::posix_time::milliseconds(_timeout_ms);
+        boost::mutex::scoped_lock lock(_condition_mutex);
         do
         {
-            ros::Duration(0.1).sleep();
-            ros::spinOnce();
-            counterMs+=10;
-            ROS_DEBUG("Counter %s %d", "CMD_STOP", counterMs);
+           hasNoTimeout = _cond.timed_wait(lock, timeout);
+           ROS_DEBUG("Wakeup Timeout:%d", !hasNoTimeout);
         }
-        while (!_shutdownSignal && !isDone(CMD_STOP, error_flag) && counterMs <= _timeout_ms);
+        while (!_shutdownSignal && !isDone(CMD_STOP, error_flag) && hasNoTimeout);
+        ROS_DEBUG("Wakeup and ok or timeout");
     }
-    while (counterMs > _timeout_ms);
+    while (!hasNoTimeout);
 
     if (error_flag)
     {
@@ -579,12 +566,17 @@ bool Egl90_can_node::stop(std_srvs::Trigger::Request &req, std_srvs::Trigger::Re
 
 void Egl90_can_node::updateState()
 {
+    fdata updateTime;
+    updateTime.f = 0.02;
     can::Frame txframe = can::Frame(can::MsgHeader(_can_id));
-    txframe.data[0] = 1; //DLEN
+    txframe.data[0] = 6; //DLEN
     txframe.data[1] = GET_STATE; //CMD Byte
-    txframe.dlc = 2;
-
-    addState(GET_STATE, PENDING);
+    txframe.data[2] = updateTime.c[0];
+    txframe.data[3] = updateTime.c[1];
+    txframe.data[4] = updateTime.c[2];
+    txframe.data[5] = updateTime.c[3];
+    txframe.data[6] = 0x07; //Send all information (0x01+0x02+0x04)
+    txframe.dlc = 7;
 
 //    _can_driver.send(can::toframe("50C#0195"));
     ROS_DEBUG("Sending getState message");
@@ -635,28 +627,28 @@ bool Egl90_can_node::movePos(ipa325_egl90_can::MovePos::Request &req, ipa325_egl
     bool error_flag = false;
     addState(MOVE_POS, PENDING);
 
-
-    unsigned int counterMs = 0;
+    bool hasNoTimeout = false;
     do
     {
-        counterMs = 0;
-        ROS_INFO("Sending move_pos message");
+        ROS_INFO("Sending MOVE_POS message");
         if (getState(MOVE_POS) == CMD_NOT_FOUND)
         {
             ROS_WARN("State %s was lost and retry had to restore it!", "MOVE_POS");
             addState(MOVE_POS);
         }
         _can_driver.send(txframe);
+
+        boost::system_time const timeout=boost::get_system_time()+ boost::posix_time::milliseconds(_timeout_ms);
+        boost::mutex::scoped_lock lock(_condition_mutex);
         do
         {
-            ros::Duration(0.1).sleep();
-            ros::spinOnce();
-            counterMs+=10;
-            ROS_DEBUG("Counter %s %d", "MOVE_POS", counterMs);
+           hasNoTimeout = _cond.timed_wait(lock, timeout);
+           ROS_DEBUG("Wakeup Timeout:%d", !hasNoTimeout);
         }
-        while (!_shutdownSignal && !isDone(MOVE_POS, error_flag) && counterMs <= _timeout_ms);
+        while (!_shutdownSignal && !isDone(MOVE_POS, error_flag) && hasNoTimeout);
+        ROS_DEBUG("Wakeup and ok or timeout");
     }
-    while (counterMs > _timeout_ms);
+    while (!hasNoTimeout);
 
     if (error_flag)
     {
@@ -708,7 +700,7 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
      bool hasNoTimeout = false;
      do
      {
-         ROS_INFO("Sending move_vel message");
+         ROS_INFO("Sending MOVE_VEL message");
          if (getState(MOVE_VEL) == CMD_NOT_FOUND)
          {
              ROS_WARN("State %s was lost and retry had to restore it!", "MOVE_VEL");
