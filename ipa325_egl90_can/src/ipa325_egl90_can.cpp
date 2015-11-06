@@ -704,10 +704,9 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
 
      addState(MOVE_VEL, PENDING);
 
-     unsigned int counterMs = 0;
+     bool hasTimeOut = true;
      do
      {
-         counterMs = 0;
          ROS_INFO("Sending move_vel message");
          if (getState(MOVE_VEL) == CMD_NOT_FOUND)
          {
@@ -716,16 +715,20 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
          }
          _can_driver.send(txframe1);
          _can_driver.send(txframe2);
+
+         boost::system_time const timeout = boost::get_system_time()+boost::posix_time::millisec(_timeout_ms);
+         boost::mutex::scoped_lock lock(_mutex);
          do
          {
-             ros::Duration(0.1).sleep();
-             ros::spinOnce();
-             counterMs+=10;
-            ROS_DEBUG("Counter %s %d", "MOVE_VEL", counterMs);
+             hasTimeOut = _cond.timed_wait(lock, timeout);
+             //ros::Duration(0.1).sleep();
+             //ros::spinOnce();
+             //counterMs+=10;
+            //ROS_DEBUG("Counter %s %d", "MOVE_VEL", counterMs);
          }
-         while (!_shutdownSignal && !isDone(MOVE_VEL, error_flag) && counterMs <= _timeout_ms);
+         while (!_shutdownSignal && !isDone(MOVE_VEL, error_flag));
      }
-     while (counterMs > _timeout_ms);
+     while (hasTimeOut);
 
      if (error_flag)
      {
