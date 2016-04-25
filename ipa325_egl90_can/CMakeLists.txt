@@ -8,13 +8,16 @@ find_package(catkin REQUIRED COMPONENTS
   roscpp
   std_msgs
   message_generation
+  socketcan_interface
+  std_srvs
 )
 
 ## System dependencies are found with CMake's conventions
-# find_package(Boost REQUIRED COMPONENTS system)
+# find_package(Boost REQUIRED COMPONENTS
+#     system)
 
 ## Set to debug compiler mode
-SET(CMAKE_BUILD_TYPE debug)
+#SET(CMAKE_BUILD_TYPE debug)
 
 ## Uncomment this if the package has a setup.py. This macro ensures
 ## modules and global scripts declared therein get installed
