@@ -118,7 +118,7 @@ public:
     Egl90_can_node();
     void spin();
 
-    void updateState();
+    void updateState(float cycletime);
 private:
 
     static bool _shutdownSignal;

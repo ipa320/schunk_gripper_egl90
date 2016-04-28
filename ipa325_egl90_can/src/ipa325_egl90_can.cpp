@@ -47,7 +47,7 @@ Egl90_can_node::Egl90_can_node()
      std_srvs::Trigger::Request  req;
      std_srvs::Trigger::Response res;
      acknowledge(req, res);
-     updateState();
+     //updateState(0.04);
 }
 
 void Egl90_can_node::handleFrame_response(const can::Frame &f)
@@ -68,6 +68,7 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
 
             break;
         case CMD_WARNING: //TODO
+        	break;
         case CMD_POS_REACHED:
             setState(CMD_REFERENCE, OK, false);
             setState(MOVE_POS, OK, false);
@@ -125,7 +126,7 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
     else
     {
         ROS_INFO("Got response %x %x, %s %s", search->first, search->second.second, _cmd_str[(CMD)search->first].c_str(), _cmd_str[(CMD)search->second.second].c_str());
-        if (f.dlc >= 2 && f.data[2] == CMD_ERROR)
+        if (f.data[1] >= 2 && f.data[2] == CMD_ERROR)
         {
             search->second.second = ERROR;
         }
@@ -424,7 +425,7 @@ void Egl90_can_node::fillStrMaps()
 bool Egl90_can_node::moveToReferencePos(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res)
 {
     can::Frame txframe = can::Frame(can::MsgHeader(_can_id));
-    txframe.data[0] = 0x01;
+    txframe.data[0] = 1;
     txframe.data[1] = CMD_REFERENCE; //CMD Byte
     txframe.dlc = 2;
     bool error_flag = false;
@@ -436,7 +437,7 @@ bool Egl90_can_node::moveToReferencePos(std_srvs::Trigger::Request &req, std_srv
         ROS_INFO("Sending CMD_REFERENCE message");
         if (getState(CMD_REFERENCE) == CMD_NOT_FOUND)
         {
-            ROS_WARN("State %s was lost and retry had to restore it!", "MOVE_POS");
+            ROS_WARN("State %s was lost and retry had to restore it!", "CMD_REFERENCE");
             addState(CMD_REFERENCE);
         }
         _can_driver.send(txframe);
@@ -445,7 +446,7 @@ bool Egl90_can_node::moveToReferencePos(std_srvs::Trigger::Request &req, std_srv
         boost::mutex::scoped_lock lock(_condition_mutex);
         do
         {
-           hasNoTimeout = _cond.timed_wait(lock, timeout);
+           hasNoTimeout = _cond.timed_wait(lock, timeout); // This is going to be True until the timeout runs out
            ROS_DEBUG("Wakeup Timeout:%d", !hasNoTimeout);
         }
         while (!_shutdownSignal && !isDone(CMD_REFERENCE, error_flag) && hasNoTimeout);
@@ -473,19 +474,17 @@ bool Egl90_can_node::acknowledge(std_srvs::Trigger::Request &req, std_srvs::Trig
     txframe.data[0] = 1; //DLEN
     txframe.data[1] = CMD_ACK; //CMD Byte
     txframe.dlc = 2;
-
-    addState(CMD_ACK, PENDING);
-
-    //_can_driver.send(can::toframe("50C#018B"));
-
     bool error_flag = false;
     bool hasNoTimeout = false;
+
+    addState(CMD_ACK, PENDING);
+    //_can_driver.send(can::toframe("50C#018B"));
     do
     {
         ROS_INFO("Sending CMD_ACK message");
         if (getState(CMD_ACK) == CMD_NOT_FOUND)
         {
-            ROS_WARN("State %s was lost and retry had to restore it!", "MOVE_POS");
+            ROS_WARN("State %s was lost and retry had to restore it!", "CMD_ACK");
             addState(CMD_ACK);
         }
         _can_driver.send(txframe);
@@ -517,24 +516,21 @@ bool Egl90_can_node::acknowledge(std_srvs::Trigger::Request &req, std_srvs::Trig
 
 bool Egl90_can_node::stop(std_srvs::Trigger::Request &req, std_srvs::Trigger::Response &res)
 {
-
     can::Frame txframe = can::Frame(can::MsgHeader(_can_id));
     txframe.data[0] = 1; //DLEN
     txframe.data[1] = CMD_STOP; //CMD Byte
     txframe.dlc = 2;
-
     bool error_flag = false;
+    bool hasNoTimeout = false;
 
     addState(CMD_STOP, PENDING);
-
 //    _can_driver.send(can::toframe("50C#0191"));
-    bool hasNoTimeout = false;
     do
     {
         ROS_INFO("Sending CMD_STOP message");
         if (getState(CMD_STOP) == CMD_NOT_FOUND)
         {
-            ROS_WARN("State %s was lost and retry had to restore it!", "MOVE_POS");
+            ROS_WARN("State %s was lost and retry had to restore it!", "CMD_STOP");
             addState(CMD_STOP);
         }
         _can_driver.send(txframe);
@@ -564,10 +560,10 @@ bool Egl90_can_node::stop(std_srvs::Trigger::Request &req, std_srvs::Trigger::Re
     return true;
 }
 
-void Egl90_can_node::updateState()
+void Egl90_can_node::updateState(float cycletime)
 {
     fdata updateTime;
-    updateTime.f = 0.02;
+    updateTime.f = cycletime;
     can::Frame txframe = can::Frame(can::MsgHeader(_can_id));
     txframe.data[0] = 6; //DLEN
     txframe.data[1] = GET_STATE; //CMD Byte
@@ -575,7 +571,7 @@ void Egl90_can_node::updateState()
     txframe.data[3] = updateTime.c[1];
     txframe.data[4] = updateTime.c[2];
     txframe.data[5] = updateTime.c[3];
-    txframe.data[6] = 0x07; //Send all information (0x01+0x02+0x04)
+    txframe.data[6] = 0x07; //Send all information (0x01+0x02+0x04)  (Position, velocity and current)
     txframe.dlc = 7;
 
 //    _can_driver.send(can::toframe("50C#0195"));
@@ -623,11 +619,10 @@ bool Egl90_can_node::movePos(ipa325_egl90_can::MovePos::Request &req, ipa325_egl
     txframe.data[4] = pos.c[2];
     txframe.data[5] = pos.c[3];
     txframe.dlc = 6;
-
     bool error_flag = false;
-    addState(MOVE_POS, PENDING);
-
     bool hasNoTimeout = false;
+
+    addState(MOVE_POS, PENDING);
     do
     {
         ROS_INFO("Sending MOVE_POS message");
@@ -675,6 +670,7 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
 
      can::Frame txframe1 = can::Frame(can::MsgHeader(_can_id));
      can::Frame txframe2 = can::Frame(can::MsgHeader(_can_id));
+     can::Frame txframe3 = can::Frame(can::MsgHeader(_can_id));
 
      txframe1.data[0] = 9; // DLEN Total Data length to come (1Byte CMD + 4Byte Vel + 4Byte Cur)
      txframe1.data[1] = FRAG_START; // First fragment (Fragmentsmarker do not count in DLEN)
@@ -687,17 +683,25 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
      txframe1.dlc = 8;
 
      txframe2.data[0] = 3;
-     txframe2.data[1] = FRAG_END; //Last fragment
+     txframe2.data[1] = FRAG_MIDDLE; // Second fragment (Fragmentsmarker do not count in DLEN)
      txframe2.data[2] = cur.c[1];
      txframe2.data[3] = cur.c[2];
      txframe2.data[4] = cur.c[3];
-     txframe2.dlc = 5;
+     txframe2.data[5] = 0;
+     txframe2.data[6] = 0;
+     txframe2.dlc = 7;
+
+     txframe3.data[0] = 0;
+     txframe3.data[1] = FRAG_END; //Last fragment
+     txframe3.data[2] = 0;
+     txframe3.data[3] = 0;
+     txframe3.data[4] = 0;
+     txframe3.dlc = 5;
 
      bool error_flag = false;
+     bool hasNoTimeout = false;
 
      addState(MOVE_VEL, PENDING);
-
-     bool hasNoTimeout = false;
      do
      {
          ROS_INFO("Sending MOVE_VEL message");
@@ -708,6 +712,7 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
          }
          _can_driver.send(txframe1);
          _can_driver.send(txframe2);
+         _can_driver.send(txframe3);
 
          boost::system_time const timeout=boost::get_system_time()+ boost::posix_time::milliseconds(_timeout_ms);
          boost::mutex::scoped_lock lock(_condition_mutex);
@@ -802,11 +807,12 @@ bool Egl90_can_node::isDone(CMD cmd, bool& error_flag)
                 //TODO
                 removeState(cmd);
                 isDone = true;
+            	break;
             case OK:
                 ROS_INFO("Command %s is done with ok", _cmd_str[cmd].c_str());
                 removeState(cmd);
                 isDone = true;
-            break;
+            	break;
         }
     }
     else
