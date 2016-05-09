@@ -9,6 +9,8 @@
 #include "std_srvs/Trigger.h"
 #include "ipa325_egl90_can/MovePos.h"
 #include "ipa325_egl90_can/MoveGrip.h"
+#include "ipa325_egl90_can/SetVelocity.h"
+#include "ipa325_egl90_can/SetCurrent.h"
 
 #include <boost/atomic.hpp>
 #include <boost/thread.hpp>
@@ -97,7 +99,7 @@ class Egl90_can_node
         ERROR_CONFIG_MEMORY = 210,
         ERROR_PROGRAM_MEMORY = 211,
         ERROR_INVALIDE_PHRASE = 212,
-        ERROR_SOFT_LOW = 213,
+        ERROR_SOFT_LOW = 213                                                                           ,
         ERROR_SOFT_HIGH = 214,
         ERROR_SERVICE = 216,
         ERROR_FAST_STOP = 217,

@@ -125,7 +125,7 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
     }
     else
     {
-        ROS_INFO("Got response %x %x, %s %s", search->first, search->second.second, _cmd_str[(CMD)search->first].c_str(), _cmd_str[(CMD)search->second.second].c_str());
+        ROS_INFO("Got response %x %x, %s %s", search->first, search->second.second, _cmd_str[(CMD)search->first].c_str(), _status_cmd_str[(STATUS_CMD)search->second.second].c_str());
         if (f.data[1] >= 2 && f.data[2] == CMD_ERROR)
         {
             search->second.second = ERROR;
@@ -232,15 +232,23 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
 
 void Egl90_can_node::handleFrame_error(const can::Frame &f)
 {
-    ROS_ERROR("Received error msg: %x %x, %s %s", f.data[1], f.data[2], _error_str[(ERROR_CODE)f.data[1]].c_str(), _error_str[(ERROR_CODE)f.data[2]].c_str());
-    ROS_ERROR("You might have resolve the error and to acknoledge!");
+    ROS_ERROR("Received error(88)/warning(89) msg: %x %x, %s %s", f.data[1], f.data[2], _error_str[(ERROR_CODE)f.data[1]].c_str(), _error_str[(ERROR_CODE)f.data[2]].c_str());
+    ROS_ERROR("You might have to solve the error and to acknoledge!");
     // TODO!!!
     switch(f.data[1])
     {
-    case CMD_ERROR:
-        setState(CMD_REFERENCE, ERROR, false);
+        case CMD_WARNING:
 
-        setState(MOVE_POS, ERROR, false);
+        switch(f.data[2]){
+            case ERROR_SOFT_LOW:
+                ROS_WARN("Closed the gripper with no object. Issue a movement command(e.g. CMD_REFERENCE, MOVE_POS, MOVE_GRIP) to fix it.");
+                break;
+        }
+        break;
+        case CMD_ERROR:
+            setState(CMD_REFERENCE, ERROR, false);
+
+            setState(MOVE_POS, ERROR, false);
 
         // Check for softstop and may put MOVE_VEL to ok
         switch(f.data[2])
@@ -249,6 +257,8 @@ void Egl90_can_node::handleFrame_error(const can::Frame &f)
                 ROS_WARN("Probably the safety circuit is not closed!");
                 break;
             case ERROR_SOFT_LOW:
+                ROS_WARN("Closed the gripper with no object. Acknowledge the error to fix it.");
+                break;
             case ERROR_SOFT_HIGH:
                 setState(MOVE_VEL, OK, false);
                 break;
@@ -476,6 +486,7 @@ bool Egl90_can_node::acknowledge(std_srvs::Trigger::Request &req, std_srvs::Trig
     txframe.dlc = 2;
     bool error_flag = false;
     bool hasNoTimeout = false;
+    bool cmdDone = false;
 
     addState(CMD_ACK, PENDING);
     //_can_driver.send(can::toframe("50C#018B"));
@@ -495,8 +506,10 @@ bool Egl90_can_node::acknowledge(std_srvs::Trigger::Request &req, std_srvs::Trig
         {
            hasNoTimeout = _cond.timed_wait(lock, timeout);
            ROS_DEBUG("Wakeup Timeout:%d", !hasNoTimeout);
+           cmdDone = isDone(CMD_ACK, error_flag);
+           std::cout<<"_shutdownSignal = "<<_shutdownSignal<<", isDone = "<<cmdDone<<", hasNoTimeout = "<<hasNoTimeout<<std::endl;
         }
-        while (!_shutdownSignal && !isDone(CMD_ACK, error_flag) && hasNoTimeout);
+        while (!_shutdownSignal && !cmdDone && hasNoTimeout);
         ROS_DEBUG("Wakeup and ok or timeout");
     }
     while (!hasNoTimeout);
@@ -660,7 +673,7 @@ bool Egl90_can_node::movePos(ipa325_egl90_can::MovePos::Request &req, ipa325_egl
 
 bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_egl90_can::MoveGrip::Response &res)
 {
-     ROS_INFO("move_grip seems not to be available in module 12, this is the alternativ implementation using velocity cmd and underlying current control!");
+     ROS_INFO("move_grip seems not to be available in module 12, this is the alternative implementation using velocity cmd and underlying current control!");
      ROS_WARN("The parameter you give in this command will be the default parameters for future move_pos commands!");
 
      fdata vel, cur;
@@ -700,6 +713,7 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
 
      bool error_flag = false;
      bool hasNoTimeout = false;
+     bool cmdDone = false;
 
      addState(MOVE_VEL, PENDING);
      do
@@ -720,8 +734,11 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
          {
             hasNoTimeout = _cond.timed_wait(lock, timeout);
             ROS_DEBUG("Wakeup Timeout:%d", !hasNoTimeout);
+            cmdDone = isDone(MOVE_VEL, error_flag);
+            //ROS_INFO("_shutdownSignal = %d, isDone = %d, hasNoTimeout = %d\n", _shutdownSignal, cmdDone, hasNoTimeout);
+            std::cout<<"_shutdownSignal = "<<_shutdownSignal<<", isDone = "<<cmdDone<<", hasNoTimeout = "<<hasNoTimeout<<std::endl;
          }
-         while (!_shutdownSignal && !isDone(MOVE_VEL, error_flag) && hasNoTimeout);
+         while (!_shutdownSignal && !cmdDone && hasNoTimeout);
          ROS_DEBUG("Wakeup and ok or timeout");
      }
      while (!hasNoTimeout);
@@ -737,6 +754,7 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
          res.message = "Module did reply properly!";
      }
      return true;
+}
      // --------------move grip --------------------------//
 /*     fdata cur;
      cur.f = req.current;
@@ -792,8 +810,12 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
 
      return true;
 */
-}
 
+
+// IS DONE.
+/*
+ * TODO
+ */
 bool Egl90_can_node::isDone(CMD cmd, bool& error_flag)
 {
     bool isDone = false;

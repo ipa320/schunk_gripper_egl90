@@ -28,13 +28,13 @@ int main(int argc, char **argv)
 	ros::Duration(3).sleep();
 	move_pos(20);
 	ros::Duration(3).sleep();
-	move_grip(10, 0.1);
+	move_grip(20, 0.1);
 	ros::Duration(3).sleep();
-	move_grip(-10, 0.1);
+	move_grip(-20, 0.1);
 	ros::Duration(3).sleep();
-	move_grip(10, 0.1);
+	move_grip(20, 0.1);
 	ros::Duration(3).sleep();
-	move_grip(10, 0.1);
+	move_grip(20, 0.1);
 	ros::Duration(3).sleep();
 	acknowledge();
 }

@@ -87,7 +87,7 @@ generate_messages(
 catkin_package(
 #  INCLUDE_DIRS include
 #  LIBRARIES ipa325_egl90_can
-#  CATKIN_DEPENDS roscpp
+#  CATKIN_DEPENDS roscpp, message_runtime
 #  DEPENDS system_lib
 )
 
