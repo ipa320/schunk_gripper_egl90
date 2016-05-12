@@ -19,24 +19,15 @@ int main(int argc, char **argv)
 	}
 
 	// Insert here the test commands.
-
-	move_pos(10);
-	ros::Duration(3).sleep();
-	move_pos(20);
-	ros::Duration(3).sleep();
-	move_pos(10);
-	ros::Duration(3).sleep();
-	move_pos(20);
-	ros::Duration(3).sleep();
-	move_grip(20, 0.1);
-	ros::Duration(3).sleep();
-	move_grip(-20, 0.1);
-	ros::Duration(3).sleep();
-	move_grip(20, 0.1);
-	ros::Duration(3).sleep();
-	move_grip(20, 0.1);
-	ros::Duration(3).sleep();
-	acknowledge();
+	while(true)
+	{
+		//ros::Duration(3).sleep();
+		move_grip(-5.0, 1.0);
+		move_pos(30);
+		//ros::Duration(3).sleep();
+		move_grip(5.0, 1.0);
+		//ros::Duration(3).sleep();
+	}
 }
 
 int acknowledge()

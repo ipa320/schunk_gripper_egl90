@@ -46,13 +46,13 @@ Egl90_can_node::Egl90_can_node()
      ROS_INFO("Can socket binding was successful!");
      std_srvs::Trigger::Request  req;
      std_srvs::Trigger::Response res;
-     acknowledge(req, res);
+     //acknowledge(req, res);
      //updateState(0.04);
 }
 
 void Egl90_can_node::handleFrame_response(const can::Frame &f)
 {
-    ROS_DEBUG("Received msg CMD=%x, %s", f.data[1], _cmd_str[(CMD)f.data[1]].c_str());
+    ROS_INFO("Received msg CMD=%x, %s", f.data[1], _cmd_str[(CMD)f.data[1]].c_str());
     std::map<CMD, std::pair<int, STATUS_CMD> >::iterator search = _cmd_map.find((CMD)f.data[1]);
 
     if(search == _cmd_map.end()) // CMD not found in list, probably a spontanious msg
@@ -70,11 +70,19 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
         case CMD_WARNING: //TODO
         	break;
         case CMD_POS_REACHED:
-            setState(CMD_REFERENCE, OK, false);
-            setState(MOVE_POS, OK, false);
-            setState(MOVE_VEL, OK, false);
-
-            break;
+            {
+                STATUS_CMD cmdRefrenceStatus = getState(CMD_REFERENCE);
+                if (cmdRefrenceStatus != RUNNING){
+                    //the message CMD_POS_REACHED is a confirmation from the gripper for the command CMD_REFERENCE
+                    if()
+                }
+                std::map<CMD, std::pair<int, STATUS_CMD> >::iterator cmdIterator = _cmd_map.find(CMD_REFERENCE);    
+                ROS_INFO("Egl90_can_node::handleFrame_response(...): changing the state of command %s from %s to %s", _cmd_str[(CMD)cmdIterator->first].c_str(), _status_cmd_str[(STATUS_CMD)cmdIterator->second.second].c_str(), _status_cmd_str[OK].c_str());
+                setState(CMD_REFERENCE, OK, false);
+                setState(MOVE_POS, OK, false);
+                setState(MOVE_VEL, OK, false);
+                break;
+            }
         case CMD_ERROR:
             setState(CMD_REFERENCE, ERROR, false);
             setState(MOVE_POS, ERROR, false);
@@ -147,6 +155,7 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                 if (f.dlc >= 3 && f.data[2] == REPLY_OK_1 && f.data[3] == REPLY_OK_2)
                 {
                     boost::mutex::scoped_lock lock(_mutex);
+                    ROS_INFO("Changing the state of command %s from %s to %s", _cmd_str[(CMD)search->first].c_str(), _status_cmd_str[(STATUS_CMD)search->second.second].c_str(), _status_cmd_str[RUNNING].c_str());
                     search->second.second = RUNNING;
                     lock.unlock();
                     //_cond.notify_all();
@@ -162,6 +171,7 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                 {
 
                     boost::mutex::scoped_lock lock(_mutex);
+                    ROS_INFO("Changing the state of command %s from %s to %s", _cmd_str[(CMD)search->first].c_str(), _status_cmd_str[(STATUS_CMD)search->second.second].c_str(), _status_cmd_str[OK].c_str());
                     search->second.second = OK;
                     lock.unlock();
                     _cond.notify_all();
@@ -258,6 +268,7 @@ void Egl90_can_node::handleFrame_error(const can::Frame &f)
                 break;
             case ERROR_SOFT_LOW:
                 ROS_WARN("Closed the gripper with no object. Acknowledge the error to fix it.");
+                setState(MOVE_VEL, OK, false);
                 break;
             case ERROR_SOFT_HIGH:
                 setState(MOVE_VEL, OK, false);
@@ -462,7 +473,7 @@ bool Egl90_can_node::moveToReferencePos(std_srvs::Trigger::Request &req, std_srv
         while (!_shutdownSignal && !isDone(CMD_REFERENCE, error_flag) && hasNoTimeout);
         ROS_DEBUG("Wakeup and ok or timeout");
     }
-    while (!hasNoTimeout);
+    while (!hasNoTimeout && false);
 
     if (error_flag)
     {
@@ -512,7 +523,7 @@ bool Egl90_can_node::acknowledge(std_srvs::Trigger::Request &req, std_srvs::Trig
         while (!_shutdownSignal && !cmdDone && hasNoTimeout);
         ROS_DEBUG("Wakeup and ok or timeout");
     }
-    while (!hasNoTimeout);
+    while (!hasNoTimeout && !_shutdownSignal && false);
 
     if (error_flag)
     {
@@ -644,6 +655,7 @@ bool Egl90_can_node::movePos(ipa325_egl90_can::MovePos::Request &req, ipa325_egl
             ROS_WARN("State %s was lost and retry had to restore it!", "MOVE_POS");
             addState(MOVE_POS);
         }
+        //wait_until the previous sent command finishes execution(error/ok)
         _can_driver.send(txframe);
 
         boost::system_time const timeout=boost::get_system_time()+ boost::posix_time::milliseconds(_timeout_ms);
@@ -656,7 +668,7 @@ bool Egl90_can_node::movePos(ipa325_egl90_can::MovePos::Request &req, ipa325_egl
         while (!_shutdownSignal && !isDone(MOVE_POS, error_flag) && hasNoTimeout);
         ROS_DEBUG("Wakeup and ok or timeout");
     }
-    while (!hasNoTimeout);
+    while (!hasNoTimeout && false);
 
     if (error_flag)
     {
@@ -683,7 +695,6 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
 
      can::Frame txframe1 = can::Frame(can::MsgHeader(_can_id));
      can::Frame txframe2 = can::Frame(can::MsgHeader(_can_id));
-     can::Frame txframe3 = can::Frame(can::MsgHeader(_can_id));
 
      txframe1.data[0] = 9; // DLEN Total Data length to come (1Byte CMD + 4Byte Vel + 4Byte Cur)
      txframe1.data[1] = FRAG_START; // First fragment (Fragmentsmarker do not count in DLEN)
@@ -696,20 +707,11 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
      txframe1.dlc = 8;
 
      txframe2.data[0] = 3;
-     txframe2.data[1] = FRAG_MIDDLE; // Second fragment (Fragmentsmarker do not count in DLEN)
+     txframe2.data[1] = FRAG_END; //Last fragment
      txframe2.data[2] = cur.c[1];
      txframe2.data[3] = cur.c[2];
      txframe2.data[4] = cur.c[3];
-     txframe2.data[5] = 0;
-     txframe2.data[6] = 0;
-     txframe2.dlc = 7;
-
-     txframe3.data[0] = 0;
-     txframe3.data[1] = FRAG_END; //Last fragment
-     txframe3.data[2] = 0;
-     txframe3.data[3] = 0;
-     txframe3.data[4] = 0;
-     txframe3.dlc = 5;
+     txframe2.dlc = 5;
 
      bool error_flag = false;
      bool hasNoTimeout = false;
@@ -724,9 +726,9 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
              ROS_WARN("State %s was lost and retry had to restore it!", "MOVE_VEL");
              addState(MOVE_VEL);
          }
+
          _can_driver.send(txframe1);
          _can_driver.send(txframe2);
-         _can_driver.send(txframe3);
 
          boost::system_time const timeout=boost::get_system_time()+ boost::posix_time::milliseconds(_timeout_ms);
          boost::mutex::scoped_lock lock(_condition_mutex);
@@ -741,7 +743,7 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
          while (!_shutdownSignal && !cmdDone && hasNoTimeout);
          ROS_DEBUG("Wakeup and ok or timeout");
      }
-     while (!hasNoTimeout);
+     while (!hasNoTimeout && !_shutdownSignal && false);
 
      if (error_flag)
      {
@@ -818,6 +820,12 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
  */
 bool Egl90_can_node::isDone(CMD cmd, bool& error_flag)
 {
+    /* This member function decides if the gripper has received the command and it can execute it (i.e. OK) 
+     * or if it has received the command but it cannot execute it (i.e. ERROR). It does NOT tell us if the 
+     * gripper finished the execution of the command. Because of this reason we do not remove the state if
+     * the gripper acknowledged the receipt of the command with OK. We must receive a second message from the
+     * gripper in order to know that it has finished executing the command and only then can the command be
+    * removed from the map.*/
     bool isDone = false;
     if (_cmd_map.count(cmd) == 1)
     {
@@ -826,15 +834,17 @@ bool Egl90_can_node::isDone(CMD cmd, bool& error_flag)
             case ERROR:
                 ROS_ERROR("COMMAND %s responded with an error", _cmd_str[cmd].c_str());
                 error_flag = true;
-                //TODO
-                removeState(cmd);
+                removeState(cmd);//remove the command only if the gripper acknowledged the receipt of the command with an error
                 isDone = true;
             	break;
             case OK:
-                ROS_INFO("Command %s is done with ok", _cmd_str[cmd].c_str());
-                removeState(cmd);
+                ROS_INFO("Command %s was received by module with ok", _cmd_str[cmd].c_str());
+                //removeState(cmd);
                 isDone = true;
             	break;
+            default:
+                ROS_INFO("In Egl90_can_node::isDone(...): command %s has state %s", _cmd_str[cmd].c_str(), _status_cmd_str[(STATUS_CMD)_cmd_map[cmd].second].c_str());
+                break;
         }
     }
     else
