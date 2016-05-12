@@ -9,8 +9,6 @@
 #include "std_srvs/Trigger.h"
 #include "ipa325_egl90_can/MovePos.h"
 #include "ipa325_egl90_can/MoveGrip.h"
-#include "ipa325_egl90_can/SetVelocity.h"
-#include "ipa325_egl90_can/SetCurrent.h"
 
 #include <boost/atomic.hpp>
 #include <boost/thread.hpp>
@@ -85,6 +83,7 @@ class Egl90_can_node
         INFO_UNKNOWN_AXIS_INDEX = 17,
         INFO_WRONG_BAUDRATE = 22,
         INFO_CHECKSUM = 25,
+        INFO_VALUE_LIMIT_MAX = 27,
         INFO_MESSAGE_LENGTH = 29,
         INFO_WRONG_PARAMETER = 30,
         ERROR_TEMP_LOW = 112,
@@ -146,9 +145,14 @@ private:
     unsigned int _timeout_ms;
     std::string _can_socket_id;
 
+    //for resending a command to the gripper if the timer has expired and for modifying the _cmd_map
     boost::mutex _mutex;
     boost::mutex _condition_mutex;
     boost::condition_variable _cond;
+
+    //for sending a command to the gripper only after it has finished executing the previous send command
+    boost::mutex _gripperFinishedMutex;
+    boost::condition_variable _gripperFinished;
 
     std::map<CMD, std::pair<int, STATUS_CMD> > _cmd_map;
 

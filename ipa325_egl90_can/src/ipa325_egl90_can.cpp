@@ -60,35 +60,116 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
         switch(f.data[1])
         {
         case CMD_INFO:
+            switch(f.data[2]){
+                case INFO_BOOT:
+                    ROS_DEBUG("The gripper has succesfully booted.");
+                    break;
+                case INFO_CHECKSUM:
+                    ROS_DEBUG("The cheksum is wrong. The data is invalid.");
+                    break;
+                case INFO_COMMUNICATION_ERROR:
+                    ROS_DEBUG("A serious error has ocurred in the serial communication.");
+                    break;
+                case INFO_FAILED:
+                    ROS_DEBUG("The command failed.");
+                    break;
+                case INFO_MESSAGE_LENGTH:
+                    ROS_DEBUG("D-Len (Data Length) does not match the recieved data.");
+                    break;
+                case INFO_NO_ERROR:
+                    ROS_DEBUG("There are no further error messages.");
+                    break;
+                case INFO_NO_RIGHTS:
+                    ROS_DEBUG("User does not have the required rights to issue this command.");
+                    break;
+                case INFO_SEARCH_SINE_VECTOR:
+                    ROS_DEBUG("The space vector for the sine commutation is being searched. Hereby the phases are being applied with 60 procent of the max. current.");
+                    break;
+                case INFO_TIMEOUT:
+                    ROS_DEBUG("There was a communication timeout.");
+                    break;
+                case INFO_UNKNOWN_AXIS_INDEX:
+                    ROS_DEBUG("The modul has recieved a false axis index.");
+                    break;
+                case INFO_UNKNOWN_COMMAND:
+                    ROS_DEBUG("The sent command is unknown.");
+                    break;
+                case INFO_WRONG_BAUDRATE:
+                    ROS_DEBUG("Wrong baud rate in the communication.");
+                    break;
+                case INFO_WRONG_PARAMETER:
+                    ROS_DEBUG("One of the given parameters is outside of the defined domain.");
+                    break;
+            }
             break;
         case CMD_MOVE_BLOCKED:
-            setState(CMD_REFERENCE, ERROR, false);
-            setState(MOVE_POS, ERROR, false);
-            setState(MOVE_VEL, OK, false);
-
-            break;
-        case CMD_WARNING: //TODO
-        	break;
-        case CMD_POS_REACHED:
             {
-                STATUS_CMD cmdRefrenceStatus = getState(CMD_REFERENCE);
-                if (cmdRefrenceStatus != RUNNING){
-                    //the message CMD_POS_REACHED is a confirmation from the gripper for the command CMD_REFERENCE
-                    if()
+                STATUS_CMD cmdStatus = getState(CMD_REFERENCE);
+                if (cmdStatus == RUNNING){
+                    //the message CMD_MOVE_BLOCKED is a confirmation from the gripper for the command CMD_REFERENCE
+                    ROS_INFO("The gripper finished executing the command CMD_REFERENCE but it did not reach the desired position because it was blocked by an object.");
+                    bool removed = removeState(CMD_REFERENCE);
+                    if(removed){
+                        ROS_INFO("The command CMD_REFERENCE was removed from the map.");
+                    }else{
+                        ROS_INFO("The command CMD_REFERENCE was NOT removed from the map.");
+                    }
+                }    
+
+                cmdStatus = getState(MOVE_POS);
+                if (cmdStatus == RUNNING){
+                    //the message CMD_MOVE_BLOCKED is a confirmation from the gripper for the command MOVE_POS
+                    ROS_INFO("The gripper finished executing the command MOVE_POS but it did not reach the desired position because it was blocked by an object.");
+                    bool removed = removeState(MOVE_POS);
+                    if(removed){
+                        ROS_INFO("The command MOVE_POS was removed from the map.");
+                    }else{
+                        ROS_INFO("The command MOVE_POS was NOT removed from the map.");
+                    }
                 }
-                std::map<CMD, std::pair<int, STATUS_CMD> >::iterator cmdIterator = _cmd_map.find(CMD_REFERENCE);    
-                ROS_INFO("Egl90_can_node::handleFrame_response(...): changing the state of command %s from %s to %s", _cmd_str[(CMD)cmdIterator->first].c_str(), _status_cmd_str[(STATUS_CMD)cmdIterator->second.second].c_str(), _status_cmd_str[OK].c_str());
-                setState(CMD_REFERENCE, OK, false);
-                setState(MOVE_POS, OK, false);
-                setState(MOVE_VEL, OK, false);
+
+                cmdStatus = getState(MOVE_VEL);
+                if (cmdStatus == RUNNING){
+                    //the message CMD_MOVE_BLOCKED is a confirmation from the gripper for the command MOVE_VEL
+                    ROS_INFO("The gripper finished executing the command MOVE_VEL but it did not reach the desired position because it was blocked by an object.");
+                    bool removed = removeState(MOVE_VEL);
+                    if(removed){
+                        ROS_INFO("The command MOVE_VEL was removed from the map.");
+                    }else{
+                        ROS_INFO("The command MOVE_VEL was NOT removed from the map.");
+                    }
+                }
+                _gripperFinished.notify_all();
                 break;
             }
-        case CMD_ERROR:
-            setState(CMD_REFERENCE, ERROR, false);
-            setState(MOVE_POS, ERROR, false);
-            setState(MOVE_VEL, ERROR, false);
-
-            break;
+        case CMD_POS_REACHED:
+            {
+                STATUS_CMD cmdStatus = getState(CMD_REFERENCE);
+                if (cmdStatus == RUNNING){
+                    //the message CMD_POS_REACHED is a confirmation from the gripper for the command CMD_REFERENCE
+                    ROS_INFO("The gripper finished executing the command CMD_REFERENCE successfully.");
+                    bool removed = removeState(CMD_REFERENCE);
+                    if(removed){
+                        ROS_INFO("The command CMD_REFERENCE was removed from the map.");
+                    }else{
+                        ROS_INFO("The command CMD_REFERENCE was NOT removed from the map.");
+                    }
+                }
+                
+                cmdStatus = getState(MOVE_POS);
+                if (cmdStatus == RUNNING){
+                    //the message CMD_POS_REACHED is a confirmation from the gripper for the command MOVE_POS
+                    ROS_INFO("The gripper finished executing the command MOVE_POS successfully.");
+                    bool removed = removeState(MOVE_POS);
+                    if(removed){
+                        ROS_INFO("The command MOVE_POS was removed from the map.");
+                    }else{
+                        ROS_INFO("The command MOVE_POS was NOT removed from the map.");
+                    }
+                }
+                _gripperFinished.notify_all();
+                break;
+            }
         case FRAG_START:
             if (f.data[2] == GET_STATE)
             {
@@ -145,9 +226,8 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
             case CMD_ACK:
                 if (f.dlc >= 3 && f.data[2] == REPLY_OK_1 && f.data[3] == REPLY_OK_2)
                 {
-                    boost::mutex::scoped_lock lock(_mutex);
-                    search->second.second = OK;
-                    lock.unlock();
+                    removeState(CMD_ACK);
+                    _gripperFinished.notify_all();
                     _cond.notify_all();
                 }
                 break;
@@ -158,16 +238,16 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                     ROS_INFO("Changing the state of command %s from %s to %s", _cmd_str[(CMD)search->first].c_str(), _status_cmd_str[(STATUS_CMD)search->second.second].c_str(), _status_cmd_str[RUNNING].c_str());
                     search->second.second = RUNNING;
                     lock.unlock();
-                    //_cond.notify_all();
+                    _cond.notify_all();
                 }
-                if (f.dlc >= 2 && f.data[2] == CMD_MOVE_BLOCKED)
+                /*if (f.dlc >= 2 && f.data[2] == CMD_MOVE_BLOCKED)
                 {
                     boost::mutex::scoped_lock lock(_mutex);
                     search->second.second = ERROR;
                     lock.unlock();
                     _cond.notify_all();
-                }
-                if (f.dlc >= 2 && f.data[2] == CMD_POS_REACHED)
+                }*/
+                /*if (f.dlc >= 2 && f.data[2] == CMD_POS_REACHED)
                 {
 
                     boost::mutex::scoped_lock lock(_mutex);
@@ -175,7 +255,7 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                     search->second.second = OK;
                     lock.unlock();
                     _cond.notify_all();
-                }
+                }*/
                 break;
             case MOVE_VEL:
                 if (f.dlc >= 3 && f.data[2] == REPLY_OK_1 && f.data[3] == REPLY_OK_2)
@@ -184,26 +264,32 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                     boost::mutex::scoped_lock lock(_mutex);
                     search->second.second = RUNNING;
                     lock.unlock();
-                    //_cond.notify_all();
+                    _cond.notify_all();
                 }
-                if (f.dlc >= 2 && f.data[2] == CMD_MOVE_BLOCKED)
+                /*if (f.dlc >= 2 && f.data[2] == CMD_MOVE_BLOCKED)
                 {
 
                     boost::mutex::scoped_lock lock(_mutex);
                     search->second.second = OK;
                     lock.unlock();
-                    _cond.notify_all();
-                }
+                    //_cond.notify_all();
+                }*/
                 break;
             case MOVE_POS:
+                if (f.dlc >= 2 && f.data[2] == INFO_VALUE_LIMIT_MAX)
+                {
+                    ROS_INFO("The given position is out of range (max = 69 mm). Specify a smaller position.");
+                    removeState(MOVE_POS);
+                    _cond.notify_all();
+                }
                 if (f.dlc >= 3 && f.data[2] == REPLY_OK_1 && f.data[3] == REPLY_OK_2)
                 {
                     boost::mutex::scoped_lock lock(_mutex);
                     search->second.second = RUNNING;
                     lock.unlock();
-                    //_cond.notify_all();
+                    _cond.notify_all();
                 }
-                if (f.dlc >= 2 && f.data[2] == CMD_MOVE_BLOCKED)
+                /*if (f.dlc >= 2 && f.data[2] == CMD_MOVE_BLOCKED)
                 {
 
                     boost::mutex::scoped_lock lock(_mutex);
@@ -217,7 +303,7 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                     search->second.second = OK;
                     lock.unlock();
                     _cond.notify_all();
-                }
+                }*/
                 break;
             case CMD_STOP:
                 if (f.dlc >= 3 && f.data[2] == REPLY_OK_1 && f.data[3] == REPLY_OK_2)
@@ -229,9 +315,20 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                     _cond.notify_all();
 
                     // Special case that if stop was called, other motion commands are canceled!
-                    setState(CMD_REFERENCE, ERROR, false);
-                    setState(MOVE_POS, ERROR, false);
-                    setState(MOVE_VEL, OK, false);
+                    STATUS_CMD cmdStatus = getState(CMD_REFERENCE);
+                    if (cmdStatus == RUNNING){
+                        //the message CMD_MOVE_BLOCKED is a confirmation from the gripper for the command MOVE_POS
+                        ROS_INFO("The gripper finished executing the command MOVE_POS but it did not reach the desired position because it was blocked by an object.");
+                        bool removed = removeState(MOVE_POS);
+                        if(removed){
+                            ROS_INFO("The command MOVE_POS was removed from the map.");
+                        }else{
+                            ROS_INFO("The command MOVE_POS was NOT removed from the map.");
+                        }
+                    }
+                    removeState(CMD_REFERENCE);
+                    removeState(MOVE_POS);
+                    removeState(MOVE_VEL);
 
                 }
                 break;
@@ -249,35 +346,48 @@ void Egl90_can_node::handleFrame_error(const can::Frame &f)
     {
         case CMD_WARNING:
 
-        switch(f.data[2]){
-            case ERROR_SOFT_LOW:
-                ROS_WARN("Closed the gripper with no object. Issue a movement command(e.g. CMD_REFERENCE, MOVE_POS, MOVE_GRIP) to fix it.");
-                break;
-        }
-        break;
+            switch(f.data[2]){
+                case ERROR_SOFT_LOW:
+                    ROS_WARN("Closed the gripper with no object. Issue a movement command(e.g. CMD_REFERENCE, MOVE_POS, MOVE_GRIP) to fix it.");
+                    break;
+                case ERROR_SOFT_HIGH:
+                    ROS_WARN("Opened the gripper until its maximum width. Issue a movement command(e.g. CMD_REFERENCE, MOVE_POS, MOVE_GRIP) to fix it.");
+                    break;
+                default:
+                    ROS_WARN("Received warning %x, %s.", f.data[2], _error_str[(ERROR_CODE)f.data[2]].c_str());
+                    break;
+            }
+            break;
         case CMD_ERROR:
             setState(CMD_REFERENCE, ERROR, false);
 
             setState(MOVE_POS, ERROR, false);
 
-        // Check for softstop and may put MOVE_VEL to ok
-        switch(f.data[2])
-        {
-            case ERROR_MOTOR_VOLTAGE_LOW:
-                ROS_WARN("Probably the safety circuit is not closed!");
-                break;
-            case ERROR_SOFT_LOW:
-                ROS_WARN("Closed the gripper with no object. Acknowledge the error to fix it.");
-                setState(MOVE_VEL, OK, false);
-                break;
-            case ERROR_SOFT_HIGH:
-                setState(MOVE_VEL, OK, false);
-                break;
-            default:
-                setState(MOVE_VEL, ERROR, false);
-                break;
-        }
-        break;
+            // Check for softstop and may put MOVE_VEL to ok
+            switch(f.data[2])
+            {
+                case ERROR_MOTOR_VOLTAGE_LOW:
+                    ROS_ERROR("Probably the safety circuit is not closed!");
+                    setState(MOVE_VEL, ERROR, false);
+                    break;
+                case ERROR_SOFT_LOW:
+                    ROS_ERROR("Closed the gripper with no object. Acknowledge the error to fix it.");
+                    setState(MOVE_VEL, OK, false);
+                    break;
+                case ERROR_SOFT_HIGH:
+                    ROS_ERROR("Opened the gripper to maximum width. Acknowledge the error to fix it.");
+                    setState(MOVE_VEL, OK, false);
+                    break;
+                case NOT_REFERENCED:
+                    ROS_ERROR("The gripper is not referenced. Acknowledge it and then issue a reference command to fix it.");
+                    setState(MOVE_VEL, ERROR, false);
+                    break;
+                default:
+                    ROS_ERROR("Received error %x, %s. Acknowledge the error to fix it.", f.data[2], _error_str[(ERROR_CODE)f.data[2]].c_str());
+                    setState(MOVE_VEL, ERROR, false);
+                    break;
+            }
+            break;
     }
 
 //    ROS_WARN("For now just try acknoledging it!");
@@ -411,6 +521,7 @@ void Egl90_can_node::fillStrMaps()
     _error_str[INFO_UNKNOWN_AXIS_INDEX] = "INFO_UNKNOWN_AXIS_INDEX";
     _error_str[INFO_WRONG_BAUDRATE] = "INFO_WRONG_BAUDRATE";
     _error_str[INFO_CHECKSUM] = "INFO_CHECKSUM";
+    _error_str[INFO_VALUE_LIMIT_MAX] = "INFO_VALUE_LIMIT_MAX";
     _error_str[INFO_MESSAGE_LENGTH] = "INFO_MESSAGE_LENGTH";
     _error_str[INFO_WRONG_PARAMETER] = "INFO_WRONG_PARAMETER";
     _error_str[ERROR_TEMP_LOW] = "ERROR_TEMP_LOW";
@@ -461,13 +572,18 @@ bool Egl90_can_node::moveToReferencePos(std_srvs::Trigger::Request &req, std_srv
             ROS_WARN("State %s was lost and retry had to restore it!", "CMD_REFERENCE");
             addState(CMD_REFERENCE);
         }
+        boost::mutex::scoped_lock sendingLock(_gripperFinishedMutex);
+        _gripperFinished.wait(sendingLock);
         _can_driver.send(txframe);
 
         boost::system_time const timeout=boost::get_system_time()+ boost::posix_time::milliseconds(_timeout_ms);
         boost::mutex::scoped_lock lock(_condition_mutex);
         do
         {
-           hasNoTimeout = _cond.timed_wait(lock, timeout); // This is going to be True until the timeout runs out
+           hasNoTimeout = _cond.timed_wait(lock, timeout);
+           if(hasNoTimeout == false){
+                _gripperFinished.notify_all();
+           }
            ROS_DEBUG("Wakeup Timeout:%d", !hasNoTimeout);
         }
         while (!_shutdownSignal && !isDone(CMD_REFERENCE, error_flag) && hasNoTimeout);
@@ -509,6 +625,8 @@ bool Egl90_can_node::acknowledge(std_srvs::Trigger::Request &req, std_srvs::Trig
             ROS_WARN("State %s was lost and retry had to restore it!", "CMD_ACK");
             addState(CMD_ACK);
         }
+        boost::mutex::scoped_lock sendingLock(_gripperFinishedMutex);
+        _gripperFinished.wait(sendingLock);
         _can_driver.send(txframe);
 
         boost::system_time const timeout=boost::get_system_time()+ boost::posix_time::milliseconds(_timeout_ms);
@@ -516,6 +634,9 @@ bool Egl90_can_node::acknowledge(std_srvs::Trigger::Request &req, std_srvs::Trig
         do
         {
            hasNoTimeout = _cond.timed_wait(lock, timeout);
+           if(hasNoTimeout == false){
+                _gripperFinished.notify_all();
+           }
            ROS_DEBUG("Wakeup Timeout:%d", !hasNoTimeout);
            cmdDone = isDone(CMD_ACK, error_flag);
            std::cout<<"_shutdownSignal = "<<_shutdownSignal<<", isDone = "<<cmdDone<<", hasNoTimeout = "<<hasNoTimeout<<std::endl;
@@ -523,7 +644,7 @@ bool Egl90_can_node::acknowledge(std_srvs::Trigger::Request &req, std_srvs::Trig
         while (!_shutdownSignal && !cmdDone && hasNoTimeout);
         ROS_DEBUG("Wakeup and ok or timeout");
     }
-    while (!hasNoTimeout && !_shutdownSignal && false);
+    while (!hasNoTimeout && !_shutdownSignal);
 
     if (error_flag)
     {
@@ -655,7 +776,9 @@ bool Egl90_can_node::movePos(ipa325_egl90_can::MovePos::Request &req, ipa325_egl
             ROS_WARN("State %s was lost and retry had to restore it!", "MOVE_POS");
             addState(MOVE_POS);
         }
-        //wait_until the previous sent command finishes execution(error/ok)
+        
+        boost::mutex::scoped_lock sendingLock(_gripperFinishedMutex);
+        _gripperFinished.wait(sendingLock);
         _can_driver.send(txframe);
 
         boost::system_time const timeout=boost::get_system_time()+ boost::posix_time::milliseconds(_timeout_ms);
@@ -663,6 +786,9 @@ bool Egl90_can_node::movePos(ipa325_egl90_can::MovePos::Request &req, ipa325_egl
         do
         {
            hasNoTimeout = _cond.timed_wait(lock, timeout);
+           if(hasNoTimeout == false){
+                _gripperFinished.notify_all();
+           }
            ROS_DEBUG("Wakeup Timeout:%d", !hasNoTimeout);
         }
         while (!_shutdownSignal && !isDone(MOVE_POS, error_flag) && hasNoTimeout);
@@ -727,6 +853,8 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
              addState(MOVE_VEL);
          }
 
+         boost::mutex::scoped_lock sendingLock(_gripperFinishedMutex);
+        _gripperFinished.wait(sendingLock);
          _can_driver.send(txframe1);
          _can_driver.send(txframe2);
 
@@ -736,6 +864,9 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
          {
             hasNoTimeout = _cond.timed_wait(lock, timeout);
             ROS_DEBUG("Wakeup Timeout:%d", !hasNoTimeout);
+            if(hasNoTimeout == false){
+                _gripperFinished.notify_all();
+            }
             cmdDone = isDone(MOVE_VEL, error_flag);
             //ROS_INFO("_shutdownSignal = %d, isDone = %d, hasNoTimeout = %d\n", _shutdownSignal, cmdDone, hasNoTimeout);
             std::cout<<"_shutdownSignal = "<<_shutdownSignal<<", isDone = "<<cmdDone<<", hasNoTimeout = "<<hasNoTimeout<<std::endl;
@@ -835,6 +966,7 @@ bool Egl90_can_node::isDone(CMD cmd, bool& error_flag)
                 ROS_ERROR("COMMAND %s responded with an error", _cmd_str[cmd].c_str());
                 error_flag = true;
                 removeState(cmd);//remove the command only if the gripper acknowledged the receipt of the command with an error
+                _gripperFinished.notify_all();
                 isDone = true;
             	break;
             case OK:
