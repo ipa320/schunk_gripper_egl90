@@ -46,7 +46,7 @@ Egl90_can_node::Egl90_can_node()
      ROS_INFO("Can socket binding was successful!");
      std_srvs::Trigger::Request  req;
      std_srvs::Trigger::Response res;
-     //acknowledge(req, res);
+     acknowledge(req, res);
      //updateState(0.04);
 }
 
@@ -123,9 +123,9 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                 cmdStatus = getState(MOVE_VEL);
                 if (cmdStatus == RUNNING){
                     //the message CMD_MOVE_BLOCKED is a confirmation from the gripper for the command MOVE_VEL
-                    ROS_INFO("The module finished executing the command MOVE_VEL but it did not reach the desired position because it was blocked by an object.");
-                    ROS_INFO("Changing the state of command %s from %s to %s", _cmd_str[MOVE_VEL].c_str(), _status_cmd_str[(STATUS_CMD)cmdStatus].c_str(), _status_cmd_str[ERROR].c_str());
-                    setState(MOVE_VEL, ERROR, false);
+                    ROS_INFO("The module finished executing the command MOVE_VEL and it gripped an object.");
+                    ROS_INFO("Changing the state of command %s from %s to %s", _cmd_str[MOVE_VEL].c_str(), _status_cmd_str[(STATUS_CMD)cmdStatus].c_str(), _status_cmd_str[OK].c_str());
+                    setState(MOVE_VEL, OK, false);
                 }
                 _cond.notify_all();
                 break;
@@ -150,6 +150,7 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                 _cond.notify_all();
                 break;
             }
+        // This three fragments only handle State messages.    
         case FRAG_START:
             if (f.data[2] == GET_STATE)
             {
@@ -207,8 +208,10 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                 if (f.dlc >= 3 && f.data[2] == REPLY_OK_1 && f.data[3] == REPLY_OK_2)
                 {
                     ROS_INFO("Changing the state of command %s from %s to %s", _cmd_str[(CMD)search->first].c_str(), _status_cmd_str[(STATUS_CMD)search->second.second].c_str(), _status_cmd_str[OK].c_str());
+                    boost::mutex::scoped_lock lock(_mutex);
                     search->second.second = OK;
                     _cond.notify_all();
+                    lock.unlock();
                 }
                 break;
             case CMD_REFERENCE:
@@ -273,6 +276,20 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
                     search->second.second = RUNNING;
                     lock.unlock();
                 }
+
+                if(f.dlc > 4){
+                    fdata timeEstimation;
+                    timeEstimation.c[0] = f.data[2];
+                    timeEstimation.c[1] = f.data[3];
+                    timeEstimation.c[2] = f.data[4];
+                    timeEstimation.c[3] = f.data[5];
+    
+                    ROS_INFO("The module will execute the command %s in %.2f seconds.", _cmd_str[(CMD)search->first].c_str(), timeEstimation.f);
+                    ROS_INFO("Changing the state of command %s from %s to %s", _cmd_str[(CMD)search->first].c_str(), _status_cmd_str[(STATUS_CMD)search->second.second].c_str(), _status_cmd_str[RUNNING].c_str());
+                    boost::mutex::scoped_lock lock(_mutex);
+                    search->second.second = RUNNING;
+                    lock.unlock();
+                }
                 /*if (f.dlc >= 2 && f.data[2] == CMD_MOVE_BLOCKED)
                 {
 
@@ -323,8 +340,14 @@ void Egl90_can_node::handleFrame_response(const can::Frame &f)
 
 void Egl90_can_node::handleFrame_error(const can::Frame &f)
 {
-    ROS_ERROR("Received error(88)/warning(89) msg: %x %x, %s %s", f.data[1], f.data[2], _error_str[(ERROR_CODE)f.data[1]].c_str(), _error_str[(ERROR_CODE)f.data[2]].c_str());
-    ROS_ERROR("You might have to solve the error and to acknoledge!");
+    if(f.data[1] == CMD_WARNING){
+        ROS_WARN("Received warning msg: %x %x, %s %s", f.data[1], f.data[2], _error_str[(ERROR_CODE)f.data[1]].c_str(), _error_str[(ERROR_CODE)f.data[2]].c_str());
+    }
+    else if(f.data[1] == CMD_ERROR){
+        ROS_ERROR("Received error msg: %x %x, %s %s", f.data[1], f.data[2], _error_str[(ERROR_CODE)f.data[1]].c_str(), _error_str[(ERROR_CODE)f.data[2]].c_str());
+        ROS_ERROR("You might have to solve the error and to acknowledge!");
+    }
+    
     // TODO!!!
     switch(f.data[1])
     {
@@ -359,18 +382,24 @@ void Egl90_can_node::handleFrame_error(const can::Frame &f)
                     {
                         STATUS_CMD cmdStatus = getState(MOVE_VEL);
                         ROS_ERROR("Closed the gripper with no object. Acknowledge the error to fix it.");
-                        ROS_ERROR("Changing the state of command %s from %s to %s.", _cmd_str[MOVE_VEL].c_str(), _status_cmd_str[(STATUS_CMD)cmdStatus].c_str(), _status_cmd_str[OK].c_str());
-                        setState(MOVE_VEL, OK, false);
-                        _cond.notify_all();
+                        if (cmdStatus != CMD_NOT_FOUND)
+                        {
+                            ROS_INFO("Changing the state of command %s from %s to %s.", _cmd_str[MOVE_VEL].c_str(), _status_cmd_str[(STATUS_CMD)cmdStatus].c_str(), _status_cmd_str[ERROR].c_str());
+                            setState(MOVE_VEL, ERROR, false);
+                            _cond.notify_all();
+                        }
                         break;
                     }
                 case ERROR_SOFT_HIGH:
                     {
                         STATUS_CMD cmdStatus = getState(MOVE_VEL);
                         ROS_ERROR("Opened the gripper to maximum width. Acknowledge the error to fix it.");
-                        ROS_ERROR("Changing the state of command %s from %s to %s.", _cmd_str[MOVE_VEL].c_str(), _status_cmd_str[(STATUS_CMD)cmdStatus].c_str(), _status_cmd_str[OK].c_str());
-                        setState(MOVE_VEL, OK, false);
-                        _cond.notify_all();
+                        if (cmdStatus != CMD_NOT_FOUND)
+                        {
+                            ROS_INFO("Changing the state of command %s from %s to %s.", _cmd_str[MOVE_VEL].c_str(), _status_cmd_str[(STATUS_CMD)cmdStatus].c_str(), _status_cmd_str[OK].c_str());
+                            setState(MOVE_VEL, OK, false);
+                            _cond.notify_all();
+                        }
                         break;
                     }
                 case NOT_REFERENCED:
@@ -569,9 +598,15 @@ bool Egl90_can_node::moveToReferencePos(std_srvs::Trigger::Request &req, std_srv
             ROS_WARN("State %s was lost and retry had to restore it!", "CMD_REFERENCE");
             addState(CMD_REFERENCE);
         }
-        boost::mutex::scoped_lock sendingLock(_gripperFinishedMutex);
-        _gripperFinished.wait(sendingLock);
+        boost::mutex::scoped_lock _cmdMapLock(_mutex);
+        if(_cmd_map.size() > 1){
+            //there are other commands currently being executed
+            boost::mutex::scoped_lock sendingLock(_gripperFinishedMutex);
+            _gripperFinished.wait(sendingLock);
+        }
         _can_driver.send(txframe);
+        ROS_INFO("CMD_REFERENCE sent");
+        _cmdMapLock.unlock();
 
         boost::system_time const timeout=boost::get_system_time()+ boost::posix_time::milliseconds(_timeout_ms);
         boost::mutex::scoped_lock lock(_condition_mutex);
@@ -624,9 +659,15 @@ bool Egl90_can_node::acknowledge(std_srvs::Trigger::Request &req, std_srvs::Trig
             ROS_WARN("State %s was lost and retry had to restore it!", "CMD_ACK");
             addState(CMD_ACK);
         }
-        boost::mutex::scoped_lock sendingLock(_gripperFinishedMutex);
-        _gripperFinished.wait(sendingLock);
+        boost::mutex::scoped_lock _cmdMapLock(_mutex);
+        if(_cmd_map.size() > 1){
+            //there are other commands currently being executed
+            boost::mutex::scoped_lock sendingLock(_gripperFinishedMutex);
+            _gripperFinished.wait(sendingLock);
+        }
         _can_driver.send(txframe);
+        ROS_INFO("CMD_ACK sent");
+        _cmdMapLock.unlock();
 
         boost::system_time const timeout=boost::get_system_time()+ boost::posix_time::milliseconds(_timeout_ms);
         boost::mutex::scoped_lock lock(_condition_mutex);
@@ -778,9 +819,15 @@ bool Egl90_can_node::movePos(ipa325_egl90_can::MovePos::Request &req, ipa325_egl
             addState(MOVE_POS);
         }
         
-        boost::mutex::scoped_lock sendingLock(_gripperFinishedMutex);
-        _gripperFinished.wait(sendingLock);
+        boost::mutex::scoped_lock _cmdMapLock(_mutex);
+        if(_cmd_map.size() > 1){
+            //there are other commands currently being executed
+            boost::mutex::scoped_lock sendingLock(_gripperFinishedMutex);
+            _gripperFinished.wait(sendingLock);
+        }
         _can_driver.send(txframe);
+        ROS_INFO("MOVE_POS sent");
+        _cmdMapLock.unlock();
 
         boost::system_time const timeout=boost::get_system_time()+ boost::posix_time::milliseconds(_timeout_ms);
         boost::mutex::scoped_lock lock(_condition_mutex);
@@ -856,10 +903,16 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
              addState(MOVE_VEL);
          }
 
-         boost::mutex::scoped_lock sendingLock(_gripperFinishedMutex);
-        _gripperFinished.wait(sendingLock);
-         _can_driver.send(txframe1);
+         boost::mutex::scoped_lock _cmdMapLock(_mutex);
+        if(_cmd_map.size() > 1){
+            //there are other commands currently being executed
+            boost::mutex::scoped_lock sendingLock(_gripperFinishedMutex);
+            _gripperFinished.wait(sendingLock);
+        }
+        _can_driver.send(txframe1);
          _can_driver.send(txframe2);
+        ROS_INFO("MOVE_VEL sent");
+        _cmdMapLock.unlock();
 
          boost::system_time const timeout=boost::get_system_time()+ boost::posix_time::milliseconds(_timeout_ms);
          boost::mutex::scoped_lock lock(_condition_mutex);
@@ -995,9 +1048,9 @@ bool Egl90_can_node::isDone(CMD cmd, bool& error_flag)
     }
     else
     {
-        ROS_ERROR("Waiting for an answer of a command, which cannot be found! %x, %s", cmd, _cmd_str[cmd].c_str());
-        ROS_WARN("State %s was lost and retry had to restore it!", _cmd_str[cmd].c_str());
-        addState(cmd, RUNNING);
+        //ROS_ERROR("Waiting for an answer of a command, which cannot be found! %x, %s", cmd, _cmd_str[cmd].c_str());
+        ROS_INFO("The command %s was removed from _cmd_map because it was not executed by the module!", _cmd_str[cmd].c_str());
+        //addState(cmd, RUNNING);
     }
     return isDone;
 }

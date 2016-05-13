@@ -22,10 +22,16 @@ int main(int argc, char **argv)
 	while(true)
 	{
 		//ros::Duration(3).sleep();
-		move_grip(-5.0, 1.0);
-		move_pos(30);
+		move_grip(-20.0, 1.0);
+		//acknowledge();
 		//ros::Duration(3).sleep();
-		move_grip(5.0, 1.0);
+		//move_grip(20.0, 1.0);
+		//acknowledge();
+		//move_pos(10);
+		move_pos(68.0);
+		move_pos(50.0);
+		move_pos(0.0);
+		move_pos(50);
 		//ros::Duration(3).sleep();
 	}
 }
