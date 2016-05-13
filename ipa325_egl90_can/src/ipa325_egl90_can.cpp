@@ -353,6 +353,7 @@ void Egl90_can_node::handleFrame_error(const can::Frame &f)
                 case ERROR_MOTOR_VOLTAGE_LOW:
                     ROS_ERROR("Probably the safety circuit is not closed!");
                     setState(MOVE_VEL, ERROR, false);
+                    _cond.notify_all();
                     break;
                 case ERROR_SOFT_LOW:
                     {
@@ -380,6 +381,7 @@ void Egl90_can_node::handleFrame_error(const can::Frame &f)
                 default:
                     ROS_ERROR("Received error %x, %s. Acknowledge the error to fix it.", f.data[2], _error_str[(ERROR_CODE)f.data[2]].c_str());
                     setState(MOVE_VEL, ERROR, false);
+                    _cond.notify_all();
                     break;
             }
             break;
