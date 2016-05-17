@@ -1,5 +1,8 @@
 #include "ros/ros.h"
 #include "ipa325_egl90_can/egl90_can_node.h"
+#include <iostream>
+#include <boost/progress.hpp>
+#include <boost/timer.hpp>
 
 int acknowledge(void);
 int reference_motion(void);
@@ -18,9 +21,13 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	// Insert here the test commands.
-	while(true)
-	{
+	const unsigned int totalTestCycles	= 1000;
+    boost::progress_display show_progress(totalTestCycles);
+    // Insert here the test commands.
+    for(int i = 0; i <= totalTestCycles; i++)
+    {
+        //ROS_INFO("Cycle No. %d", i);
+		//std::cout<<"Cycle No. "<<i<<"/1000"<<std::endl;
 		//ros::Duration(3).sleep();
 		move_grip(-20.0, 1.0);
 		//acknowledge();
@@ -33,7 +40,8 @@ int main(int argc, char **argv)
 		move_pos(0.0);
 		move_pos(50);
 		//ros::Duration(3).sleep();
-	}
+        ++show_progress;
+    }
 }
 
 int acknowledge()
@@ -59,7 +67,7 @@ int reference_motion()
 	std_srvs::Trigger srv;
 	if (c_ref_mot.call(srv))
 	{
-	  ROS_INFO("Moving to reference position.");
+	  ROS_DEBUG("Moving to reference position.");
 	}
 	else
 	{
@@ -94,7 +102,7 @@ int move_grip(float sp, float cu)
 	srv.request.current = cu;
 	if (c_move_grip.call(srv))
 	{
-	  ROS_INFO("Moving the gripper fingers.");
+	  ROS_DEBUG("Moving the gripper fingers.");
 	}
 	else
 	{
