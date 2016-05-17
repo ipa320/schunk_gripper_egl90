@@ -16,6 +16,8 @@
 #include <map>
 #include <utility>
 
+#define MAX_CMD_RETRIES 10 //TO DO: add as parameter
+
 //Variables for converting float Data
 union fdata{
     char c[4];
@@ -120,10 +122,13 @@ public:
     void spin();
 
     void updateState(float cycletime);
+    void restartCANInterface();
 private:
 
     static bool _shutdownSignal;
     ros::NodeHandle _nh;
+
+    boost::atomic<int> _cmdRetries;
 
     //ros::Publisher _pub_diagnostics;
     ros::Publisher _pub_joint_states;

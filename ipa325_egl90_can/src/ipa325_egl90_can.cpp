@@ -7,7 +7,7 @@
 
 bool Egl90_can_node::_shutdownSignal = false;
 
-Egl90_can_node::Egl90_can_node()
+Egl90_can_node::Egl90_can_node() : _cmdRetries(0)
 {
     //signal handler
     signal((int) SIGINT, Egl90_can_node::signalHandler);
@@ -48,6 +48,14 @@ Egl90_can_node::Egl90_can_node()
      std_srvs::Trigger::Response res;
      acknowledge(req, res);
      //updateState(0.04);
+}
+
+void Egl90_can_node::restartCANInterface()
+{
+    ROS_INFO("Restarting the socket can interface...");
+    _can_driver.recover();
+    _cmdRetries = 0;
+    ROS_INFO("Restart of socket can interface completed!");
 }
 
 void Egl90_can_node::handleFrame_response(const can::Frame &f)
@@ -604,6 +612,10 @@ bool Egl90_can_node::moveToReferencePos(std_srvs::Trigger::Request &req, std_srv
             boost::mutex::scoped_lock sendingLock(_gripperFinishedMutex);
             _gripperFinished.wait(sendingLock);
         }
+
+        if(_cmdRetries > MAX_CMD_RETRIES){
+            restartCANInterface();
+        }
         _can_driver.send(txframe);
         ROS_INFO("CMD_REFERENCE sent");
         _cmdMapLock.unlock();
@@ -617,6 +629,7 @@ bool Egl90_can_node::moveToReferencePos(std_srvs::Trigger::Request &req, std_srv
                 ROS_INFO("The timer has expired. The module received the command CMD_REFERENCE but it did not execute it. Must resend it.");
                 removeState(CMD_REFERENCE);
                 _gripperFinished.notify_all();
+                _cmdRetries++;
            }
            ROS_DEBUG("Wakeup Timeout:%d", !hasNoTimeout);
         }
@@ -665,6 +678,10 @@ bool Egl90_can_node::acknowledge(std_srvs::Trigger::Request &req, std_srvs::Trig
             boost::mutex::scoped_lock sendingLock(_gripperFinishedMutex);
             _gripperFinished.wait(sendingLock);
         }
+
+        if(_cmdRetries > MAX_CMD_RETRIES){
+            restartCANInterface();
+        }
         _can_driver.send(txframe);
         ROS_INFO("CMD_ACK sent");
         _cmdMapLock.unlock();
@@ -678,6 +695,7 @@ bool Egl90_can_node::acknowledge(std_srvs::Trigger::Request &req, std_srvs::Trig
                 ROS_INFO("The timer has expired but the module did not reply. Must resend it.");
                 removeState(CMD_ACK);
                 _gripperFinished.notify_all();
+                _cmdRetries++;
            }
            ROS_DEBUG("Wakeup Timeout:%d", !hasNoTimeout);
            cmdDone = isDone(CMD_ACK, error_flag);
@@ -825,6 +843,10 @@ bool Egl90_can_node::movePos(ipa325_egl90_can::MovePos::Request &req, ipa325_egl
             boost::mutex::scoped_lock sendingLock(_gripperFinishedMutex);
             _gripperFinished.wait(sendingLock);
         }
+
+        if(_cmdRetries > MAX_CMD_RETRIES){
+            restartCANInterface();
+        }
         _can_driver.send(txframe);
         ROS_INFO("MOVE_POS sent");
         _cmdMapLock.unlock();
@@ -838,6 +860,7 @@ bool Egl90_can_node::movePos(ipa325_egl90_can::MovePos::Request &req, ipa325_egl
                 ROS_INFO("The timer has expired but the module did not reply. Must resend it.");
                 removeState(MOVE_POS);
                 _gripperFinished.notify_all();
+                _cmdRetries++;
            }
            ROS_DEBUG("Wakeup Timeout:%d", !hasNoTimeout);
         }
@@ -909,6 +932,10 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
             boost::mutex::scoped_lock sendingLock(_gripperFinishedMutex);
             _gripperFinished.wait(sendingLock);
         }
+
+        if(_cmdRetries > MAX_CMD_RETRIES){
+            restartCANInterface();
+        }
         _can_driver.send(txframe1);
          _can_driver.send(txframe2);
         ROS_INFO("MOVE_VEL sent");
@@ -924,6 +951,7 @@ bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_e
                 ROS_INFO("The timer has expired but the module did not reply. Must resend it.");
                 removeState(MOVE_VEL);
                 _gripperFinished.notify_all();
+                _cmdRetries++;
             }
             cmdDone = isDone(MOVE_VEL, error_flag);
             //ROS_INFO("_shutdownSignal = %d, isDone = %d, hasNoTimeout = %d\n", _shutdownSignal, cmdDone, hasNoTimeout);
