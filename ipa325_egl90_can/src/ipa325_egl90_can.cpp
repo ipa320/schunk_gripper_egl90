@@ -53,7 +53,13 @@ Egl90_can_node::Egl90_can_node() : _cmdRetries(0)
 void Egl90_can_node::restartCANInterface()
 {
     ROS_INFO("Restarting the socket can interface...");
-    _can_driver.recover();
+    
+    _can_driver.shutdown();
+    _can_driver.init(_can_socket_id, false);// read own messages: false
+    _respListener = _can_driver.createMsgListener(can::MsgHeader(_can_module_id), can::CommInterface::FrameDelegate(this, &Egl90_can_node::handleFrame_response));
+    _errorListener = _can_driver.createMsgListener(can::MsgHeader(_can_error_id), can::CommInterface::FrameDelegate(this, &Egl90_can_node::handleFrame_error));  
+
+    // 3rd solution to try is a full restart of the driver
     _cmdRetries = 0;
     ROS_INFO("Restart of socket can interface completed!");
 }
@@ -1054,6 +1060,7 @@ bool Egl90_can_node::isDone(CMD cmd, bool& error_flag)
                     }
                     _gripperFinished.notify_all();
                     isDone = true;
+                    _cmdRetries = 0;
                 	break;
                 }
             case OK:
@@ -1067,6 +1074,7 @@ bool Egl90_can_node::isDone(CMD cmd, bool& error_flag)
                     }
                     _gripperFinished.notify_all();
                     isDone = true;
+                    _cmdRetries = 0;
                 	break;
                 }
             default:
