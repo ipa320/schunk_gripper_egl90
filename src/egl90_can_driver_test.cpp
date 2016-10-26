@@ -1,5 +1,5 @@
 #include "ros/ros.h"
-#include "ipa325_egl90_can/egl90_can_node.h"
+#include "schunk_gripper_egl90/egl90_can_node.h"
 #include <iostream>
 #include <boost/progress.hpp>
 #include <boost/timer.hpp>
@@ -47,7 +47,7 @@ int main(int argc, char **argv)
 int acknowledge()
 {
 	ros::NodeHandle n_ack;
-	ros::ServiceClient c_ack = n_ack.serviceClient<std_srvs::Trigger>("ipa325_egl90_can_node/acknowledge");
+	ros::ServiceClient c_ack = n_ack.serviceClient<std_srvs::Trigger>("schunk_gripper_egl90_node/acknowledge");
 	std_srvs::Trigger srv;
 	if (c_ack.call(srv))
 	{
@@ -63,7 +63,7 @@ int acknowledge()
 int reference_motion()
 {
 	ros::NodeHandle n_ref_mot;
-	ros::ServiceClient c_ref_mot = n_ref_mot.serviceClient<std_srvs::Trigger>("ipa325_egl90_can_node/reference_motion");
+	ros::ServiceClient c_ref_mot = n_ref_mot.serviceClient<std_srvs::Trigger>("schunk_gripper_egl90_node/reference_motion");
 	std_srvs::Trigger srv;
 	if (c_ref_mot.call(srv))
 	{
@@ -79,8 +79,8 @@ int reference_motion()
 int move_pos(float pos)
 {
 	ros::NodeHandle n_move_pos;
-	ros::ServiceClient c_move_pos = n_move_pos.serviceClient<ipa325_egl90_can::MovePos>("ipa325_egl90_can_node/move_pos");
-	ipa325_egl90_can::MovePos srv;
+	ros::ServiceClient c_move_pos = n_move_pos.serviceClient<schunk_gripper_egl90::MovePos>("schunk_gripper_egl90_node/move_pos");
+	schunk_gripper_egl90::MovePos srv;
 	srv.request.position = pos;
 	if (c_move_pos.call(srv))
 	{
@@ -96,8 +96,8 @@ int move_pos(float pos)
 int move_grip(float sp, float cu)
 {
 	ros::NodeHandle n_move_grip;
-	ros::ServiceClient c_move_grip = n_move_grip.serviceClient<ipa325_egl90_can::MoveGrip>("ipa325_egl90_can_node/move_grip");
-	ipa325_egl90_can::MoveGrip srv;
+	ros::ServiceClient c_move_grip = n_move_grip.serviceClient<schunk_gripper_egl90::MoveGrip>("schunk_gripper_egl90_node/move_grip");
+	schunk_gripper_egl90::MoveGrip srv;
 	srv.request.speed = sp;
 	srv.request.current = cu;
 	if (c_move_grip.call(srv))
@@ -114,7 +114,7 @@ int move_grip(float sp, float cu)
 int clean_up()
 {
 	ros::NodeHandle n_clean;
-	ros::ServiceClient c_clean = n_clean.serviceClient<std_srvs::Trigger>("ipa325_egl90_can_node/clean_up");
+	ros::ServiceClient c_clean = n_clean.serviceClient<std_srvs::Trigger>("schunk_gripper_egl90_node/clean_up");
 	std_srvs::Trigger srv;
 	if (c_clean.call(srv))
 	{
@@ -130,7 +130,7 @@ int clean_up()
 int stop()
 {
 	ros::NodeHandle n_stop;
-	ros::ServiceClient c_stop = n_stop.serviceClient<std_srvs::Trigger>("ipa325_egl90_can_node/stop");
+	ros::ServiceClient c_stop = n_stop.serviceClient<std_srvs::Trigger>("schunk_gripper_egl90_node/stop");
 	std_srvs::Trigger srv;
 	if (c_stop.call(srv))
 	{

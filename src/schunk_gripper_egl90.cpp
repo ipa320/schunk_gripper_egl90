@@ -1105,7 +1105,7 @@ void Egl90_can_node::spin()
 
 void Egl90_can_node::signalHandler(int signal)
 {
-    ROS_INFO_NAMED("driver", "shutdown");
+    ROS_INFO_NAMED("egl90_driver", "shutdown");
     _shutdownSignal = true;
 }
 

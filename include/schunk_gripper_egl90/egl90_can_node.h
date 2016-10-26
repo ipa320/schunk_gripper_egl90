@@ -7,8 +7,8 @@
 #include <ros/ros.h>
 
 #include "std_srvs/Trigger.h"
-#include "ipa325_egl90_can/MovePos.h"
-#include "ipa325_egl90_can/MoveGrip.h"
+#include "schunk_gripper_egl90/MovePos.h"
+#include "schunk_gripper_egl90/MoveGrip.h"
 
 #include <boost/atomic.hpp>
 #include <boost/thread.hpp>
@@ -189,11 +189,11 @@ private:
     bool cleanUp(std_srvs::Trigger::Request  &req,
                             std_srvs::Trigger::Response &res);
 
-    bool movePos(ipa325_egl90_can::MovePos::Request  &req,
-                            ipa325_egl90_can::MovePos::Response &res);
+    bool movePos(schunk_gripper_egl90::MovePos::Request  &req,
+                            schunk_gripper_egl90::MovePos::Response &res);
 
-    bool moveGrip(ipa325_egl90_can::MoveGrip::Request  &req,
-                            ipa325_egl90_can::MoveGrip::Response &res);
+    bool moveGrip(schunk_gripper_egl90::MoveGrip::Request  &req,
+                            schunk_gripper_egl90::MoveGrip::Response &res);
 
     bool isDone(CMD cmd, bool& error_flag);
 
