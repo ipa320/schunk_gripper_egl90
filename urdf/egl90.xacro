@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<robot name="egl90" xmlns:xacro="http://www.ros.org/wiki/xacro">
+  <xacro:include filename="$(find schunk_gripper_egl90)/urdf/egl90_macro.xacro"/>
+
+  <link name="world"/>
+  <xacro:egl90 parent="world" prefix="">
+      <origin xyz="0 0 0" rpy="0 0 0"/>
+  </xacro:egl90>
+
+  <xacro:egl90-jaws prefix="" x="0.0" min="-0.015" max="0.026">
+    <mesh filename="package://schunk_gripper_egl90/meshes/finger.stl"/>
+  </xacro:egl90-jaws>
+</robot>
