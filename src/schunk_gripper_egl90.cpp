@@ -1,4 +1,4 @@
-#include "ipa325_egl90_can/egl90_can_node.h"
+#include "schunk_gripper_egl90/egl90_can_node.h"
 
 #include <signal.h>
 #include <sensor_msgs/JointState.h>
@@ -817,7 +817,7 @@ bool Egl90_can_node::publishState()
     _pub_joint_states.publish(js);
 }
 
-bool Egl90_can_node::movePos(ipa325_egl90_can::MovePos::Request &req, ipa325_egl90_can::MovePos::Response &res)
+bool Egl90_can_node::movePos(schunk_gripper_egl90::MovePos::Request &req, schunk_gripper_egl90::MovePos::Response &res)
 {
     fdata pos;
     pos.f = req.position;
@@ -888,7 +888,7 @@ bool Egl90_can_node::movePos(ipa325_egl90_can::MovePos::Request &req, ipa325_egl
     return true;
 }
 
-bool Egl90_can_node::moveGrip(ipa325_egl90_can::MoveGrip::Request &req, ipa325_egl90_can::MoveGrip::Response &res)
+bool Egl90_can_node::moveGrip(schunk_gripper_egl90::MoveGrip::Request &req, schunk_gripper_egl90::MoveGrip::Response &res)
 {
      ROS_INFO("move_grip seems not to be available in module 12, this is the alternative implementation using velocity cmd and underlying current control!");
      ROS_WARN("The parameter you give in this command will be the default parameters for future move_pos commands!");
